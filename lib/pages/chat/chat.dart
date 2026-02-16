@@ -637,6 +637,20 @@ class ChatController extends State<ChatPageWithRoom>
     Matrix.of(context).setActiveClient(c);
   });
 
+  /// Whether the bot in this direct chat is currently running.
+  /// Matches the typing indicator animation — true when the bot user
+  /// appears in the room's typing users list.
+  bool get isBotRunning {
+    final botId = room.directChatMatrixID;
+    if (botId == null || !isKnownBot(botId)) return false;
+    return room.typingUsers.any((u) => u.id == botId);
+  }
+
+  /// Send /stop to abort the bot's current run.
+  void stopBot() {
+    room.sendTextEvent('/stop', parseCommands: false);
+  }
+
   Future<void> send() async {
     if (sendController.text.trim().isEmpty) return;
 
