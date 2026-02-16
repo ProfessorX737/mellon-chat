@@ -26,6 +26,7 @@ import 'package:fluffychat/widgets/unread_rooms_badge.dart';
 import '../../utils/stream_extension.dart';
 import 'chat_emoji_picker.dart';
 import 'chat_input_row.dart';
+import 'package:fluffychat/pages/chat/model_picker_pill.dart';
 
 enum _EventContextAction { info, report }
 
@@ -397,10 +398,33 @@ class ChatView extends StatelessWidget {
                                         ],
                                       )
                                     : Column(
-                                        mainAxisSize: .min,
+                                        mainAxisSize: MainAxisSize.min,
                                         children: [
                                           ReplyDisplay(controller),
                                           ChatInputRow(controller),
+                                          if (controller.currentModelSelection !=
+                                                  null ||
+                                              controller.isFetchingCatalog)
+                                            Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                horizontal: 12,
+                                                vertical: 2,
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  ModelPickerPill(
+                                                    currentSelection: controller
+                                                        .currentModelSelection,
+                                                    onTap: controller
+                                                        .openModelPicker,
+                                                    isLoading: controller
+                                                        .isFetchingCatalog,
+                                                  ),
+                                                  const Spacer(),
+                                                ],
+                                              ),
+                                            ),
                                           ChatEmojiPicker(controller),
                                         ],
                                       ),

@@ -70,13 +70,16 @@ extension InitWithRestoreExtension on Client {
         : null;
 
     try {
+      Logs().i('[DEBUG-RESTORE] Starting init for client: $clientName');
       await init(
         onInitStateChanged: (state) {
+          Logs().i('[DEBUG-RESTORE] Init state changed: $state');
           if (state == InitState.migratingDatabase) onMigration?.call();
         },
         waitForFirstSync: false,
         waitUntilLoadCompletedLoaded: false,
       );
+      Logs().i('[DEBUG-RESTORE] Init complete. isLogged=${isLogged()} homeserver=$homeserver userID=$userID deviceID=$deviceID');
       if (isLogged()) {
         final accessToken = this.accessToken;
         final homeserver = this.homeserver?.toString();
@@ -104,7 +107,7 @@ extension InitWithRestoreExtension on Client {
         }
       }
     } catch (e, s) {
-      Logs().wtf('Client init failed!', e, s);
+      Logs().wtf('[DEBUG-RESTORE] Client init FAILED! error=$e', e, s);
       final l10n = await lookupL10n(PlatformDispatcher.instance.locale);
       final sessionBackupString = await storage?.read(key: storageKey);
       if (sessionBackupString == null) {

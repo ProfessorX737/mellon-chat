@@ -37,6 +37,9 @@ class ChatListHeader extends StatelessWidget implements PreferredSizeWidget {
           final status =
               client.onSyncStatus.value ??
               const SyncStatusUpdate(SyncStatus.waitingForResponse);
+          if (status.status == SyncStatus.error) {
+            Logs().w('[DEBUG-SYNC] Sync error! status=${status.status} error=${status.error?.exception} homeserver=${client.homeserver} prevBatch=${client.prevBatch}');
+          }
           final hide =
               client.onSync.value != null &&
               status.status != SyncStatus.error &&

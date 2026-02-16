@@ -37,6 +37,10 @@ import 'package:fluffychat/widgets/adaptive_dialogs/show_text_input_dialog.dart'
 import 'package:fluffychat/widgets/future_loading_dialog.dart';
 import 'package:fluffychat/widgets/matrix.dart';
 import 'package:fluffychat/widgets/share_scaffold_dialog.dart';
+import 'package:fluffychat/ai_stream/ai_stream_model.dart';
+import 'package:fluffychat/ai_stream/model_catalog.dart';
+import 'package:fluffychat/ai_stream/mellonchat_channel_data.dart';
+import 'package:fluffychat/pages/chat/model_picker_panel.dart';
 import '../../utils/account_bundles.dart';
 import '../../utils/localized_exception_extension.dart';
 import 'send_file_dialog.dart';
@@ -170,6 +174,22 @@ class ChatController extends State<ChatPageWithRoom>
   String pendingText = '';
 
   bool showEmojiPicker = false;
+
+  // ── Model picker state ──
+  /// Cached model catalog from the bot's /model response.
+  /// Reads from and writes to the global per-room cache.
+  ModelCatalog? get modelCatalog => ModelCatalog.getForRoom(roomId);
+  set modelCatalog(ModelCatalog? value) {
+    if (value != null) {
+      ModelCatalog.cacheForRoom(roomId, value);
+    }
+  }
+
+  /// Whether we are currently fetching the catalog
+  bool isFetchingCatalog = false;
+
+  /// Current model selection (from cached catalog)
+  ModelSelection? get currentModelSelection => modelCatalog?.current;
 
   String? get threadLastEventId {
     final threadId = activeThreadId;
@@ -397,6 +417,31 @@ class ChatController extends State<ChatPageWithRoom>
     loadTimelineFuture = _getTimeline();
     try {
       await loadTimelineFuture;
+
+      // If the initial timeline has no visible events (e.g. flooded with
+      // edit-stream updates), auto-fetch history until at least one
+      // visible event appears. Caps at 5 rounds to avoid infinite loops.
+      var visibleEvents = timeline?.events
+          .filterByVisibleInGui(threadId: activeThreadId) ?? [];
+      var fetchRounds = 0;
+      while (visibleEvents.isEmpty &&
+          fetchRounds < 5 &&
+          (timeline?.canRequestHistory ?? false)) {
+        Logs().v('No visible events after ${timeline?.events.length} loaded — '
+            'requesting more history (round ${fetchRounds + 1})');
+        await timeline?.requestHistory(historyCount: _loadHistoryCount);
+        visibleEvents = timeline?.events
+            .filterByVisibleInGui(threadId: activeThreadId) ?? [];
+        fetchRounds++;
+      }
+      if (fetchRounds > 0) {
+        Logs().v('Auto-fetched $fetchRounds rounds — '
+            '${visibleEvents.length} visible events now');
+      }
+
+      // Initialize model catalog (scan timeline + auto-fetch if needed)
+      _initModelCatalog();
+
       // We launched the chat with a given initial event ID:
       if (initialEventId != null) {
         scrollToEventId(initialEventId);
@@ -455,6 +500,17 @@ class ChatController extends State<ChatPageWithRoom>
   void updateView() {
     if (!mounted) return;
     setReadMarker();
+
+    // Check latest events for model catalog data and ai_stream model info
+    final events = timeline?.events;
+    if (events != null && events.isNotEmpty) {
+      final checkCount = events.length < 3 ? events.length : 3;
+      for (var i = 0; i < checkCount; i++) {
+        _checkForModelCatalog(events[i]);
+        _checkForAiStreamModel(events[i]);
+      }
+    }
+
     setState(() {});
   }
 
@@ -583,6 +639,16 @@ class ChatController extends State<ChatPageWithRoom>
 
   Future<void> send() async {
     if (sendController.text.trim().isEmpty) return;
+
+    // Intercept bare /model command — open picker instead of sending
+    final trimmed = sendController.text.trim();
+    if (trimmed == '/model' || trimmed == '/models') {
+      sendController.clear();
+      setState(() => _inputTextIsEmpty = true);
+      openModelPicker();
+      return;
+    }
+
     _storeInputTimeoutTimer?.cancel();
     final prefs = Matrix.of(context).store;
     prefs.remove('draft_$roomId');
@@ -742,6 +808,246 @@ class ChatController extends State<ChatPageWithRoom>
 
   void hideEmojiPicker() {
     setState(() => showEmojiPicker = false);
+  }
+
+  // ── Model picker methods ──
+
+  /// Scan existing timeline events for model catalog data and auto-fetch
+  /// if needed. Called once after the timeline first loads.
+  void _initModelCatalog() {
+    // Already have a valid catalog with providers from the global cache
+    if (modelCatalog != null && modelCatalog!.catalog.isNotEmpty) {
+      debugPrint('[model-pill] initModelCatalog: using cached catalog for $roomId (${modelCatalog!.catalog.length} providers)');
+      setState(() {}); // Trigger rebuild so pill shows
+      return;
+    }
+
+    // Scan timeline events for model info (newest-first).
+    final events = timeline?.events;
+    debugPrint('[model-pill] initModelCatalog: scanning ${events?.length ?? 0} events for room $roomId');
+    if (events != null) {
+      for (var i = 0; i < events.length; i++) {
+        final event = events[i];
+        // Check ai_stream model info from any bot message (most common).
+        // This gives us the current model for the pill, but NOT the full
+        // catalog — so we still need to auto-fetch below.
+        final aiStream = event.content.aiStreamContent;
+        if (aiStream?.model != null) {
+          final m = aiStream!.model!;
+          debugPrint('[model-pill] found ai_stream model at event[$i]: ${m.provider}/${m.model}');
+          modelCatalog = ModelCatalog(
+            current: ModelSelection(provider: m.provider, model: m.model),
+            catalog: [],
+            fetchedAt: DateTime.now(),
+          );
+          setState(() {});
+          // Don't return — continue scanning for a full catalog or fall
+          // through to auto-fetch so the picker has providers/models.
+          break;
+        }
+        // Check silent model response
+        if (event.type == 'org.mellonchat.model_response' &&
+            event.content['type'] == 'model_picker') {
+          debugPrint('[model-pill] found model_response at event[$i]');
+          try {
+            modelCatalog = ModelCatalog.fromJson(event.content);
+            setState(() {});
+            return;
+          } catch (e) {
+            debugPrint('[model-pill] model_response parse error: $e');
+          }
+        }
+        // Check visible /model response
+        final channelData =
+            MellonchatChannelData.fromEventContent(event.content);
+        if (channelData != null &&
+            channelData.isModelPicker &&
+            channelData.modelCatalog != null) {
+          debugPrint('[model-pill] found channel_data model_picker at event[$i]');
+          modelCatalog = channelData.modelCatalog;
+          setState(() {});
+          return;
+        }
+      }
+    }
+
+    // Check room state for a previously cached model_response (state events
+    // persist across syncs and are NOT encrypted in E2E rooms).
+    final stateEvent = room.getState('org.mellonchat.model_response');
+    if (stateEvent != null && stateEvent.content['type'] == 'model_picker') {
+      debugPrint('[model-pill] found model_response in room state');
+      try {
+        modelCatalog = ModelCatalog.fromJson(stateEvent.content);
+        setState(() {});
+        return;
+      } catch (e) {
+        debugPrint('[model-pill] state parse error: $e');
+      }
+    }
+
+    final hasFullCatalog = modelCatalog != null && modelCatalog!.catalog.isNotEmpty;
+    debugPrint('[model-pill] scan done: hasModel=${modelCatalog != null} hasFullCatalog=$hasFullCatalog isDirect=${room.isDirectChat} autoFetchAttempted=${ModelCatalog.wasAutoFetchAttempted(roomId)}');
+    // Auto-fetch if we have no catalog at all, or only a partial catalog
+    // (e.g., ai_stream.model gave us `current` but no provider/model list).
+    if (room.isDirectChat && !hasFullCatalog &&
+        !ModelCatalog.wasAutoFetchAttempted(roomId)) {
+      ModelCatalog.markAutoFetchAttempted(roomId);
+      _autoFetchModelCatalog();
+    }
+  }
+
+  /// Silently send a custom event to fetch the model catalog.
+  /// Uses a room state event (org.mellonchat.model_request) so it works
+  /// in E2E encrypted rooms — state events are not encrypted.
+  void _autoFetchModelCatalog() async {
+    if (!mounted) return;
+    debugPrint('[model-pill] autoFetch: sending model_request to room $roomId');
+    setState(() => isFetchingCatalog = true);
+    try {
+      // Use setRoomStateWithKey — state events bypass E2E encryption,
+      // so the bot can always read them even in encrypted rooms.
+      await room.client.setRoomStateWithKey(
+        room.id,
+        'org.mellonchat.model_request',
+        '', // empty state key
+        {'action': 'get_catalog', 'ts': DateTime.now().millisecondsSinceEpoch},
+      );
+      debugPrint('[model-pill] autoFetch: model_request state event sent, waiting 4s for response...');
+      // Wait for sync to deliver the bot's state event response
+      await Future.delayed(const Duration(seconds: 4));
+      // Check room state for the response (state events aren't in timeline).
+      // Also update if we only have a partial catalog (current model but no
+      // provider/model list from ai_stream.model).
+      final needsCatalog = modelCatalog == null || modelCatalog!.catalog.isEmpty;
+      if (needsCatalog) {
+        final stateEvent = room.getState('org.mellonchat.model_response');
+        if (stateEvent != null && stateEvent.content['type'] == 'model_picker') {
+          try {
+            modelCatalog = ModelCatalog.fromJson(stateEvent.content);
+            debugPrint('[model-pill] autoFetch: found model_response in room state (${modelCatalog!.catalog.length} providers)');
+          } catch (e) {
+            debugPrint('[model-pill] autoFetch: state parse error: $e');
+          }
+        }
+      }
+      debugPrint('[model-pill] autoFetch: wait complete, modelCatalog=${modelCatalog != null ? "${modelCatalog!.catalog.length} providers" : "null"}');
+    } catch (e) {
+      debugPrint('[model-pill] autoFetch FAILED: $e');
+    }
+    if (mounted) {
+      setState(() => isFetchingCatalog = false);
+    }
+  }
+
+  /// Check if a timeline event contains model catalog data from the bot.
+  /// Handles both:
+  /// - org.mellonchat.model_response events (silent custom events)
+  /// - m.room.message with org.mellonchat.channel_data (visible /model responses)
+  void _checkForModelCatalog(Event event) {
+    ModelCatalog? catalog;
+
+    // Check for silent model response (custom event type)
+    if (event.type == 'org.mellonchat.model_response') {
+      final type = event.content['type'] as String?;
+      if (type == 'model_picker') {
+        try {
+          catalog = ModelCatalog.fromJson(event.content);
+        } catch (_) {}
+      }
+    }
+
+    // Check for visible /model response (channel data in regular message)
+    if (catalog == null) {
+      final channelData =
+          MellonchatChannelData.fromEventContent(event.content);
+      if (channelData != null &&
+          channelData.isModelPicker &&
+          channelData.modelCatalog != null) {
+        catalog = channelData.modelCatalog;
+      }
+    }
+
+    if (catalog != null) {
+      setState(() {
+        modelCatalog = catalog;
+        isFetchingCatalog = false;
+      });
+    }
+  }
+
+  /// Check if a bot message's ai_stream metadata contains model info.
+  /// Updates the model pill to always reflect the most recent model in use,
+  /// without needing an explicit /model command.
+  void _checkForAiStreamModel(Event event) {
+    if (event.type != 'm.room.message') return;
+    final aiStream = event.content.aiStreamContent;
+    if (aiStream == null || aiStream.model == null) return;
+
+    final m = aiStream.model!;
+    final current = modelCatalog?.current;
+    // Only update if the model actually changed (or no catalog exists yet)
+    if (current == null ||
+        current.provider != m.provider ||
+        current.model != m.model) {
+      setState(() {
+        modelCatalog = ModelCatalog(
+          current: ModelSelection(provider: m.provider, model: m.model),
+          catalog: modelCatalog?.catalog ?? [],
+          fetchedAt: DateTime.now(),
+        );
+      });
+    }
+  }
+
+  /// Open the model picker panel.
+  void openModelPicker() async {
+    // If no catalog yet or stale, fetch first
+    if (modelCatalog == null || modelCatalog!.isStale) {
+      setState(() => isFetchingCatalog = true);
+      try {
+        await room.sendTextEvent('/model', parseCommands: false);
+      } catch (e) {
+        Logs().w('Failed to send /model command', e);
+        if (mounted) setState(() => isFetchingCatalog = false);
+        return;
+      }
+      // Wait briefly for the bot response to arrive via sync.
+      // _checkForModelCatalog will set modelCatalog when it arrives.
+      await Future.delayed(const Duration(seconds: 3));
+      if (modelCatalog == null && mounted) {
+        setState(() => isFetchingCatalog = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not load model catalog.'),
+          ),
+        );
+        return;
+      }
+    }
+
+    final catalog = modelCatalog;
+    if (!mounted || catalog == null) return;
+
+    final selectedModelId = await showModelPickerPanel(
+      context: context,
+      catalog: catalog,
+    );
+
+    if (selectedModelId != null && mounted) {
+      // Send the model switch command as a message
+      room.sendTextEvent('/model $selectedModelId', parseCommands: false);
+      // Optimistically update the pill display
+      final parts = selectedModelId.split('/');
+      if (parts.length == 2) {
+        setState(() {
+          modelCatalog = ModelCatalog(
+            current: ModelSelection(provider: parts[0], model: parts[1]),
+            catalog: catalog.catalog,
+            fetchedAt: catalog.fetchedAt,
+          );
+        });
+      }
+    }
   }
 
   void emojiPickerAction() {

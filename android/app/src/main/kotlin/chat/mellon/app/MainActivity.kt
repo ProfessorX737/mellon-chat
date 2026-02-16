@@ -1,4 +1,4 @@
-package chat.fluffy.fluffychat
+package chat.mellon.app
 
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine

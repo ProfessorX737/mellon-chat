@@ -54,5 +54,6 @@ extension IsStateExtension on Event {
 
   bool get isKnownHiddenStates =>
       {PollEventContent.responseType}.contains(type) ||
-      type.startsWith('m.key.verification.');
+      type.startsWith('m.key.verification.') ||
+      type.startsWith('org.mellonchat.model_');
 }

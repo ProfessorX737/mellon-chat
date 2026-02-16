@@ -28,6 +28,7 @@ class RecordingViewModel extends StatefulWidget {
 
 class RecordingViewModelState extends State<RecordingViewModel> {
   Timer? _recorderSubscription;
+  StreamSubscription<RecordState>? _stateSubscription;
   Duration duration = Duration.zero;
 
   bool isSending = false;
@@ -60,6 +61,23 @@ class RecordingViewModelState extends State<RecordingViewModel> {
     final audioRecorder = _audioRecorder ??= AudioRecorder();
     setState(() {});
 
+    // Listen for state changes from the native recorder
+    _stateSubscription?.cancel();
+    _stateSubscription = audioRecorder.onStateChanged().listen(
+      (state) {
+        Logs().i('[recording] Native state changed: $state');
+        if (state == RecordState.stop && isRecording) {
+          Logs().w('[recording] Native recorder stopped unexpectedly!');
+        }
+        if (state == RecordState.pause) {
+          Logs().w('[recording] Native recorder was paused (audio focus loss?)');
+        }
+      },
+      onError: (error) {
+        Logs().e('[recording] Native recorder error: $error');
+      },
+    );
+
     try {
       final codec = kIsWeb
           // Web seems to create webm instead of ogg when using opus encoder
@@ -71,6 +89,7 @@ class RecordingViewModelState extends State<RecordingViewModel> {
                 await audioRecorder.isEncoderSupported(AudioEncoder.opus)
           ? AudioEncoder.opus
           : AudioEncoder.aacLc;
+      Logs().i('[recording] Using codec: $codec');
       fileName =
           'recording${DateTime.now().microsecondsSinceEpoch}.${codec.fileExtension}';
       String? path;
@@ -78,6 +97,7 @@ class RecordingViewModelState extends State<RecordingViewModel> {
         final tempDir = await getTemporaryDirectory();
         path = path_lib.join(tempDir.path, fileName);
       }
+      Logs().i('[recording] Output path: $path');
 
       final result = await audioRecorder.hasPermission();
       if (result != true) {
@@ -90,18 +110,26 @@ class RecordingViewModelState extends State<RecordingViewModel> {
       }
       await WakelockPlus.enable();
 
-      await audioRecorder.start(
-        RecordConfig(
-          bitRate: AppSettings.audioRecordingBitRate.value,
-          sampleRate: AppSettings.audioRecordingSamplingRate.value,
-          numChannels: AppSettings.audioRecordingNumChannels.value,
-          autoGain: AppSettings.audioRecordingAutoGain.value,
-          echoCancel: AppSettings.audioRecordingEchoCancel.value,
-          noiseSuppress: AppSettings.audioRecordingNoiseSuppress.value,
-          encoder: codec,
-        ),
-        path: path ?? '',
+      final config = RecordConfig(
+        bitRate: AppSettings.audioRecordingBitRate.value,
+        sampleRate: AppSettings.audioRecordingSamplingRate.value,
+        numChannels: AppSettings.audioRecordingNumChannels.value,
+        autoGain: AppSettings.audioRecordingAutoGain.value,
+        echoCancel: AppSettings.audioRecordingEchoCancel.value,
+        noiseSuppress: false,
+        encoder: codec,
+        // Prevent audio focus loss (e.g. notification sounds) from
+        // pausing the recording while the UI timer keeps running.
+        audioInterruption: AudioInterruptionMode.none,
       );
+      Logs().i('[recording] Config: bitRate=${config.bitRate}, '
+          'sampleRate=${config.sampleRate}, numChannels=${config.numChannels}, '
+          'autoGain=${config.autoGain}, echoCancel=${config.echoCancel}, '
+          'noiseSuppress=${config.noiseSuppress}, '
+          'audioInterruption=${config.audioInterruption}');
+
+      await audioRecorder.start(config, path: path ?? '');
+      Logs().i('[recording] Recording started successfully');
       setState(() => duration = Duration.zero);
       _subscribe();
     } catch (e, s) {
@@ -123,22 +151,36 @@ class RecordingViewModelState extends State<RecordingViewModel> {
 
   void _subscribe() {
     _recorderSubscription?.cancel();
+    var ampCount = 0;
     _recorderSubscription = Timer.periodic(const Duration(milliseconds: 100), (
       _,
     ) async {
-      final amplitude = await _audioRecorder!.getAmplitude();
-      var value = 100 + amplitude.current * 2;
-      value = value < 1 ? 1 : value;
-      amplitudeTimeline.add(value);
-      setState(() {
-        duration += const Duration(milliseconds: 100);
-      });
+      try {
+        final amplitude = await _audioRecorder!.getAmplitude();
+        ampCount++;
+        // Log every 10th amplitude (once per second) to avoid spam
+        if (ampCount % 10 == 0) {
+          Logs().i('[recording] Amplitude at ${duration.inSeconds}s: '
+              'current=${amplitude.current.toStringAsFixed(1)}, '
+              'max=${amplitude.max.toStringAsFixed(1)}');
+        }
+        var value = 100 + amplitude.current * 2;
+        value = value < 1 ? 1 : value;
+        amplitudeTimeline.add(value);
+        setState(() {
+          duration += const Duration(milliseconds: 100);
+        });
+      } catch (e) {
+        Logs().e('[recording] Error getting amplitude: $e');
+      }
     });
   }
 
   void _reset() {
     WakelockPlus.disable();
     _recorderSubscription?.cancel();
+    _stateSubscription?.cancel();
+    _stateSubscription = null;
     _audioRecorder?.stop();
     _audioRecorder = null;
     isSending = false;
@@ -180,7 +222,10 @@ class RecordingViewModelState extends State<RecordingViewModel> {
     onSend,
   ) async {
     _recorderSubscription?.cancel();
+    Logs().i('[recording] Stopping recording after ${duration.inSeconds}s, '
+        'amplitudeTimeline length: ${amplitudeTimeline.length}');
     final path = await _audioRecorder?.stop();
+    Logs().i('[recording] Recording stopped, path: $path');
 
     if (path == null) throw ('Recording failed!');
     const waveCount = AudioPlayerWidget.wavesCount;

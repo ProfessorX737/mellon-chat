@@ -1,11 +1,11 @@
 name: fluffychat
-title: FluffyChat
+title: Mellon Chat
 base: core24
 version: 2.4.0
 license: AGPL-3.0
 summary: The cutest messenger in the Matrix network
 description: |
-  FluffyChat is an open source, nonprofit and cute matrix messenger app. The app is easy to use but secure and decentralized.
+  Mellon Chat is an open source, nonprofit and cute matrix messenger app. The app is easy to use but secure and decentralized.
 
 
   ## Features
@@ -29,7 +29,7 @@ description: |
   - And much more...
 
 
-  ## FluffyChat comes with a dream
+  ## Mellon Chat comes with a dream
 
   Imagine a world where everyone can choose the messenger they like and is still able to chat with all of their friends.
 
@@ -102,7 +102,7 @@ slots:
   dbus-svc:
     interface: dbus
     bus: session
-    name: chat.fluffy.fluffychat
+    name: chat.mellon.app
 
 apps:
   fluffychat:

@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:matrix/matrix.dart';
 
+import 'package:fluffychat/ai_stream/streaming_gpt_markdown.dart';
+
+import 'package:fluffychat/ai_stream/ai_stream.dart';
 import 'package:fluffychat/config/setting_keys.dart';
 import 'package:fluffychat/l10n/l10n.dart';
 import 'package:fluffychat/pages/chat/events/poll.dart';
@@ -248,6 +251,36 @@ class MessageContent extends StatelessWidget {
                 fontSize: fontSize,
               );
             }
+            final isBot = event.isFromBot;
+
+            // For bot messages, use StreamingGptMarkdown for animated text reveal
+            if (isBot) {
+              final body = event.body;
+              final isStreaming = event.isStreaming;
+              final botTextStyle = TextStyle(
+                color: textColor,
+                fontSize:
+                    AppSettings.fontSizeFactor.value *
+                    AppConfig.messageFontSize,
+              );
+              final messageContent = Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: StreamingGptMarkdown(
+                  text: body,
+                  isStreaming: isStreaming,
+                  style: botTextStyle,
+                ),
+              );
+
+              return AIMessageWrapper(
+                event: event,
+                textStyle: botTextStyle,
+                isStreaming: isStreaming,
+                child: messageContent,
+              );
+            }
+
+            // Regular user messages use HtmlMessage
             var html = AppSettings.renderHtml.value && event.isRichMessage
                 ? event.formattedText
                 : event.body.replaceAll('<', '&lt;').replaceAll('>', '&gt;');
@@ -259,7 +292,7 @@ class MessageContent extends StatelessWidget {
                 event.onlyEmotes &&
                 event.numberEmotes > 0 &&
                 event.numberEmotes <= 3;
-            return Padding(
+            final messageContent = Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: HtmlMessage(
                 html: html,
@@ -285,6 +318,12 @@ class MessageContent extends StatelessWidget {
                   EventCheckboxRoomExtension.relationshipType,
                 ),
               ),
+            );
+
+            // Wrap with AI features if this is a bot message
+            return AIMessageWrapper(
+              event: event,
+              child: messageContent,
             );
         }
       case PollEventContent.startType:

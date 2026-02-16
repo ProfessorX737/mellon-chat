@@ -19,6 +19,7 @@ import 'package:fluffychat/widgets/avatar.dart';
 import 'package:fluffychat/widgets/matrix.dart';
 import 'package:fluffychat/widgets/member_actions_popup_menu_button.dart';
 import '../../../config/app_config.dart';
+import '../../../ai_stream/ai_message_wrapper.dart';
 import 'message_content.dart';
 import 'message_reactions.dart';
 import 'reply_content.dart';
@@ -100,6 +101,7 @@ class Message extends StatelessWidget {
 
     final client = Matrix.of(context).client;
     final ownMessage = event.senderId == client.userID;
+    final isBot = event.isFromBot;
     final alignment = ownMessage ? Alignment.topRight : Alignment.topLeft;
 
     var color = theme.colorScheme.surfaceContainerHigh;
@@ -223,9 +225,11 @@ class Message extends StatelessWidget {
             : SwipeDirection.startToEnd,
         onSwipe: (_) => onSwipe(),
         child: Container(
-          constraints: const BoxConstraints(
-            maxWidth: FluffyThemes.maxTimelineWidth,
-          ),
+          constraints: isBot
+              ? null
+              : const BoxConstraints(
+                  maxWidth: FluffyThemes.maxTimelineWidth,
+                ),
           padding: EdgeInsets.only(
             left: 8.0,
             right: 8.0,
@@ -333,26 +337,28 @@ class Message extends StatelessWidget {
                                         onPressed: () => onSelect(event),
                                       ),
                                     )
-                                  else if (nextEventSameSender || ownMessage)
+                                  else if (nextEventSameSender || ownMessage || isBot)
                                     SizedBox(
-                                      width: Avatar.defaultSize,
-                                      child: Center(
-                                        child: SizedBox(
-                                          width: 16,
-                                          height: 16,
-                                          child:
-                                              event.status == EventStatus.error
-                                              ? const Icon(
-                                                  Icons.error,
-                                                  color: Colors.red,
-                                                )
-                                              : event.fileSendingStatus != null
-                                              ? const CircularProgressIndicator.adaptive(
-                                                  strokeWidth: 1,
-                                                )
-                                              : null,
-                                        ),
-                                      ),
+                                      width: isBot ? 8 : Avatar.defaultSize,
+                                      child: isBot
+                                          ? null
+                                          : Center(
+                                              child: SizedBox(
+                                                width: 16,
+                                                height: 16,
+                                                child:
+                                                    event.status == EventStatus.error
+                                                    ? const Icon(
+                                                        Icons.error,
+                                                        color: Colors.red,
+                                                      )
+                                                    : event.fileSendingStatus != null
+                                                    ? const CircularProgressIndicator.adaptive(
+                                                        strokeWidth: 1,
+                                                      )
+                                                    : null,
+                                              ),
+                                            ),
                                     )
                                   else
                                     FutureBuilder<User?>(
@@ -382,7 +388,7 @@ class Message extends StatelessWidget {
                                       crossAxisAlignment: .start,
                                       mainAxisSize: .min,
                                       children: [
-                                        if (!nextEventSameSender)
+                                        if (!nextEventSameSender && !isBot)
                                           Padding(
                                             padding: const EdgeInsets.only(
                                               left: 8.0,
@@ -467,7 +473,7 @@ class Message extends StatelessWidget {
                                                   FluffyThemes.animationCurve,
                                               child: Container(
                                                 decoration: BoxDecoration(
-                                                  color: noBubble
+                                                  color: noBubble || isBot
                                                       ? Colors.transparent
                                                       : color,
                                                   borderRadius: borderRadius,
@@ -477,6 +483,7 @@ class Message extends StatelessWidget {
                                                   colors: colors,
                                                   ignore:
                                                       noBubble ||
+                                                      isBot ||
                                                       !ownMessage ||
                                                       MediaQuery.highContrastOf(
                                                         context,
@@ -491,8 +498,9 @@ class Message extends StatelessWidget {
                                                                 .borderRadius,
                                                           ),
                                                     ),
-                                                    constraints:
-                                                        const BoxConstraints(
+                                                    constraints: isBot
+                                                        ? null
+                                                        : const BoxConstraints(
                                                           maxWidth:
                                                               FluffyThemes
                                                                   .columnWidth *
@@ -593,7 +601,8 @@ class Message extends StatelessWidget {
                                                           timeline: timeline,
                                                           selected: selected,
                                                         ),
-                                                        if (event
+                                                        if (!isBot &&
+                                                            event
                                                             .hasAggregatedEvents(
                                                               timeline,
                                                               RelationshipTypes

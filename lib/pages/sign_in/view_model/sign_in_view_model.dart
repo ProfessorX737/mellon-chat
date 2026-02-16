@@ -40,7 +40,14 @@ class SignInViewModel extends ValueNotifier<SignInState> {
             .toList() ??
         [];
     final splitted = filterText.split('.');
-    if (splitted.length >= 2 && !splitted.any((part) => part.isEmpty)) {
+    // Check if it looks like a valid homeserver address:
+    // - Has at least 2 parts separated by dots (e.g., server.com)
+    // - Is a localhost address (localhost or localhost:port)
+    // - Contains :// (e.g., http://localhost:6167)
+    final isValidHomeserver = (splitted.length >= 2 && !splitted.any((part) => part.isEmpty)) ||
+        filterText.startsWith('localhost') ||
+        filterText.contains('://');
+    if (isValidHomeserver) {
       if (!filteredPublicHomeservers.any(
         (homeserver) => homeserver.name == filterText,
       )) {

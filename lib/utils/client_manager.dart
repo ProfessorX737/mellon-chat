@@ -55,8 +55,9 @@ abstract class ClientManager {
                   );
                 },
               )
+              .then((_) => Logs().i('[DEBUG-INIT] Client ${client.clientName} initialized. logged=${client.isLogged()} homeserver=${client.homeserver}'))
               .catchError(
-                (e, s) => Logs().e('Unable to initialize client', e, s),
+                (e, s) => Logs().e('[DEBUG-INIT] Unable to initialize client ${client.clientName}: $e', e, s),
               ),
         ),
       );

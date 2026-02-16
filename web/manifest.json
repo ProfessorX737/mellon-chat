@@ -1,11 +1,11 @@
 {
-    "name": "FluffyChat",
-    "short_name": "FluffyChat",
+    "name": "Mellon Chat",
+    "short_name": "Mellon Chat",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "The cutest messenger in the Matrix network",
+    "background_color": "#4A90D9",
+    "theme_color": "#4A90D9",
+    "description": "AI-powered Matrix messenger",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

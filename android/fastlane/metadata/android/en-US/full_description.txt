@@ -1,31 +1,31 @@
-FluffyChat is an open, nonprofit and cute Matrix messenger app for Ubuntu Touch, Android and iOS.
+Mellon Chat is an open, nonprofit and cute Matrix messenger app for Ubuntu Touch, Android and iOS.
 
 Open
 Opensource and open development where everyone can join.
 
 Nonprofit
-FluffyChat is donation funded.
+Mellon Chat is donation funded.
 
 Cute ♥
-Cute design and many theme settings including a dark mode. 
+Cute design and many theme settings including a dark mode.
 
 One-to-one and group chats
 Unlimited groups and direct chats.
 
 Easy
-FluffyChat is made as simple to use as possible.
+Mellon Chat is made as simple to use as possible.
 
 Free
 Free to use for everyone without ads.
 
 Decentralized
-There is no "FluffyChat server" you are forced to use. Use the server you find trustworthy or host your own.
+There is no "Mellon Chat server" you are forced to use. Use the server you find trustworthy or host your own.
 
 Compatible
 Compatible with Element, Fractal, Nheko and all Matrix messengers.
 
 
-FluffyChat comes with a dream
+Mellon Chat comes with a dream
 
 Imagine a world where everyone can choose the messenger they like and is still able to chat with all of their friends.
 A world where there are no companies spying on you when you send selfies to friends and your loved.
