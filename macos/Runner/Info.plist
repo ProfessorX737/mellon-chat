@@ -20,8 +20,18 @@
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.social-networking</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Mellon Chat uses the camera to take photos and videos to send in chats.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Mellon Chat uses the microphone to record voice messages and for voice and video calls.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Mellon Chat needs access to your photo library so you can share images in chats.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Mellon Chat uses your location only when you choose to share it in a chat.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSMainNibFile</key>
