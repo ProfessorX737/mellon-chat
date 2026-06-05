@@ -48,6 +48,7 @@ ios/vendor/
 # Local/generated asset backups and intermediates
 **/.alpha-backup/
 macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_*.png
+web/icons/Icon-maskable-*.png
 
 # Web related
 docs/tailwind.css
