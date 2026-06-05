@@ -1,24 +1,63 @@
 import 'package:matrix/matrix.dart';
 
+import 'package:fluffychat/ai_stream/agent_subchat.dart';
+import 'package:fluffychat/ai_stream/mellon_response.dart';
 import 'package:fluffychat/config/setting_keys.dart';
 
 extension VisibleInGuiExtension on List<Event> {
   List<Event> filterByVisibleInGui({
     String? exceptionEventId,
     String? threadId,
-  }) => where((event) {
-    if (threadId != null &&
-        event.relationshipType != RelationshipTypes.reaction) {
-      if ((event.relationshipType != RelationshipTypes.thread ||
-              event.relationshipEventId != threadId) &&
-          event.eventId != threadId) {
+  }) {
+    final latestResponseEventIds = latestMellonResponseEvents(
+      this,
+      isCandidate: (event) => _isVisibleInGuiBase(
+        event,
+        exceptionEventId: exceptionEventId,
+        threadId: threadId,
+      ),
+    ).values.map((event) => event.eventId).toSet();
+
+    return where((event) {
+      if (!_isVisibleInGuiBase(
+        event,
+        exceptionEventId: exceptionEventId,
+        threadId: threadId,
+      )) {
         return false;
       }
-    } else if (event.relationshipType == RelationshipTypes.thread) {
+      if (event.eventId == exceptionEventId) {
+        return true;
+      }
+
+      final responseMeta = directMellonResponseMetaForEvent(event);
+      if (responseMeta != null && responseMeta.isVisibleSnapshot) {
+        return latestResponseEventIds.contains(event.eventId);
+      }
+
+      return true;
+    }).toList();
+  }
+}
+
+bool _isVisibleInGuiBase(
+  Event event, {
+  String? exceptionEventId,
+  String? threadId,
+}) {
+  if (threadId != null &&
+      event.relationshipType != RelationshipTypes.reaction) {
+    if ((event.relationshipType != RelationshipTypes.thread ||
+            event.relationshipEventId != threadId) &&
+        event.eventId != threadId) {
       return false;
     }
-    return event.isVisibleInGui || event.eventId == exceptionEventId;
-  }).toList();
+  } else if (event.relationshipType == RelationshipTypes.thread) {
+    return false;
+  } else if (event.content[agentSubchatContentKey] != null) {
+    return false;
+  }
+  return event.isVisibleInGui || event.eventId == exceptionEventId;
 }
 
 extension IsStateExtension on Event {

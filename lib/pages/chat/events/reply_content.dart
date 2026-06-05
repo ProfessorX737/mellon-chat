@@ -4,6 +4,7 @@ import 'package:matrix/matrix.dart';
 
 import 'package:fluffychat/config/setting_keys.dart';
 import 'package:fluffychat/l10n/l10n.dart';
+import 'package:fluffychat/utils/matrix_sdk_extensions/display_event_extension.dart';
 import 'package:fluffychat/utils/matrix_sdk_extensions/matrix_locals.dart';
 import '../../../config/app_config.dart';
 
@@ -30,7 +31,7 @@ class ReplyContent extends StatelessWidget {
 
     final timeline = this.timeline;
     final displayEvent = timeline != null
-        ? replyEvent.getDisplayEvent(timeline)
+        ? replyEvent.getMellonDisplayEvent(timeline)
         : replyEvent;
     final fontSize =
         AppConfig.messageFontSize * AppSettings.fontSizeFactor.value;

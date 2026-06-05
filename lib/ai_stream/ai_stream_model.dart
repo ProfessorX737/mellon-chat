@@ -4,7 +4,6 @@
 /// for bot messages with streaming support.
 library;
 
-
 /// Global set of user IDs known to be bots, populated at runtime.
 /// Once a user sends a message with org.mellonchat.ai_stream data,
 /// they are remembered as a bot for the rest of the session.
@@ -25,6 +24,13 @@ const List<String> botPatterns = [
   'jarvis',
   'alfred',
   'tars',
+  'friday',
+  'oracle',
+  'social',
+  'herald',
+  'c3po',
+  'case',
+  'xavier2',
   'agent',
   'claude',
   'gpt',
@@ -61,6 +67,9 @@ enum AIStreamStatus {
 /// A tool execution entry. Can be "running" (currently executing),
 /// "completed", or "error".
 class CompletedTool {
+  /// Stable tool call ID, when provided by the upstream agent/proxy.
+  final String? id;
+
   /// Tool name (e.g., "Read", "Bash", "Grep")
   final String name;
 
@@ -73,6 +82,9 @@ class CompletedTool {
   /// Tool output/result
   final String? output;
 
+  /// Process exit code for command-like tools, when known.
+  final int? exitCode;
+
   /// Whether to show as collapsed by default
   final bool collapsed;
 
@@ -84,10 +96,12 @@ class CompletedTool {
   final int? textPosition;
 
   CompletedTool({
+    this.id,
     required this.name,
     this.status = 'completed',
     this.args,
     this.output,
+    this.exitCode,
     this.collapsed = true,
     this.maxHeight,
     this.textPosition,
@@ -101,10 +115,12 @@ class CompletedTool {
 
   factory CompletedTool.fromJson(Map<String, dynamic> json) {
     return CompletedTool(
+      id: json['id'] as String?,
       name: json['name'] as String,
       status: json['status'] as String? ?? 'completed',
       args: json['args'] as Map<String, dynamic>?,
       output: json['output'] as String?,
+      exitCode: json['exitCode'] as int?,
       collapsed: json['collapsed'] as bool? ?? true,
       maxHeight: json['max_height'] as int?,
       textPosition: json['textPosition'] as int?,
@@ -112,14 +128,16 @@ class CompletedTool {
   }
 
   Map<String, dynamic> toJson() => {
-        'name': name,
-        'status': status,
-        if (args != null) 'args': args,
-        if (output != null) 'output': output,
-        'collapsed': collapsed,
-        if (maxHeight != null) 'max_height': maxHeight,
-        if (textPosition != null) 'textPosition': textPosition,
-      };
+    if (id != null) 'id': id,
+    'name': name,
+    'status': status,
+    if (args != null) 'args': args,
+    if (output != null) 'output': output,
+    if (exitCode != null) 'exitCode': exitCode,
+    'collapsed': collapsed,
+    if (maxHeight != null) 'max_height': maxHeight,
+    if (textPosition != null) 'textPosition': textPosition,
+  };
 
   /// Get a short description of the tool for display (past tense / completed).
   /// Truncation is generous — the UI's TextOverflow.ellipsis handles visual clipping.
@@ -284,7 +302,8 @@ class AIStreamContent {
 
   factory AIStreamContent.fromJson(Map<String, dynamic> json) {
     final statusStr = json['status'] as String?;
-    final status = AIStreamStatus.fromString(statusStr) ?? AIStreamStatus.complete;
+    final status =
+        AIStreamStatus.fromString(statusStr) ?? AIStreamStatus.complete;
 
     final completedToolsJson = json['completed_tools'] as List<dynamic>?;
     final completedTools = completedToolsJson
@@ -299,23 +318,31 @@ class AIStreamContent {
     // Defensive fix: when the message is complete, force all "running"
     // tools to "completed". This handles cases where the final edit
     // (that would have marked them completed) failed to reach the client.
-    final resolvedTools = (status == AIStreamStatus.complete && completedTools != null)
-        ? completedTools.map((t) => t.isRunning
-            ? CompletedTool(
-                name: t.name,
-                status: 'completed',
-                args: t.args,
-                output: t.output,
-                collapsed: t.collapsed,
-                maxHeight: t.maxHeight,
-                textPosition: t.textPosition,
+    final resolvedTools =
+        (status == AIStreamStatus.complete && completedTools != null)
+        ? completedTools
+              .map(
+                (t) => t.isRunning
+                    ? CompletedTool(
+                        id: t.id,
+                        name: t.name,
+                        status: 'completed',
+                        args: t.args,
+                        output: t.output,
+                        exitCode: t.exitCode,
+                        collapsed: t.collapsed,
+                        maxHeight: t.maxHeight,
+                        textPosition: t.textPosition,
+                      )
+                    : t,
               )
-            : t).toList()
+              .toList()
         : completedTools;
 
     // Parse model selection if present
     final modelJson = json['model'] as Map<String, dynamic>?;
-    final model = (modelJson != null &&
+    final model =
+        (modelJson != null &&
             modelJson['provider'] is String &&
             modelJson['model'] is String)
         ? (
@@ -337,16 +364,18 @@ class AIStreamContent {
   }
 
   Map<String, dynamic> toJson() => {
-        'status': status.toJson(),
-        if (toolName != null) 'tool_name': toolName,
-        if (toolArgs != null) 'tool_args': toolArgs,
-        if (progress != null) 'progress': progress,
-        if (etaSeconds != null) 'eta_seconds': etaSeconds,
-        if (completedTools != null)
-          'completed_tools': completedTools!.map((e) => e.toJson()).toList(),
-        if (todos != null)
-          'todos': todos!.map((e) => {'content': e.content, 'status': e.status}).toList(),
-      };
+    'status': status.toJson(),
+    if (toolName != null) 'tool_name': toolName,
+    if (toolArgs != null) 'tool_args': toolArgs,
+    if (progress != null) 'progress': progress,
+    if (etaSeconds != null) 'eta_seconds': etaSeconds,
+    if (completedTools != null)
+      'completed_tools': completedTools!.map((e) => e.toJson()).toList(),
+    if (todos != null)
+      'todos': todos!
+          .map((e) => {'content': e.content, 'status': e.status})
+          .toList(),
+  };
 
   /// Whether currently executing a tool
   bool get isExecutingTool => status == AIStreamStatus.tool && toolName != null;

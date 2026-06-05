@@ -16,11 +16,13 @@ class SpacesNavigationRail extends StatelessWidget {
   final String? activeSpaceId;
   final void Function() onGoToChats;
   final void Function(String) onGoToSpaceId;
+  final Widget? leading;
 
   const SpacesNavigationRail({
     required this.activeSpaceId,
     required this.onGoToChats,
     required this.onGoToSpaceId,
+    this.leading,
     super.key,
   });
 
@@ -30,6 +32,9 @@ class SpacesNavigationRail extends StatelessWidget {
     final isSettings = GoRouter.of(
       context,
     ).routeInformationProvider.value.uri.path.startsWith('/rooms/settings');
+    final railWidth = FluffyThemes.isColumnMode(context)
+        ? FluffyThemes.navRailWidth
+        : FluffyThemes.navRailWidth * 0.75;
     return Material(
       child: SafeArea(
         child: StreamBuilder(
@@ -43,11 +48,17 @@ class SpacesNavigationRail extends StatelessWidget {
                 .toList();
 
             return SizedBox(
-              width: FluffyThemes.isColumnMode(context)
-                  ? FluffyThemes.navRailWidth
-                  : FluffyThemes.navRailWidth * 0.75,
+              width: railWidth,
               child: Column(
                 children: [
+                  if (leading != null)
+                    SizedBox(
+                      height: 72,
+                      width: railWidth,
+                      child: Center(
+                        child: SizedBox.square(dimension: 48, child: leading!),
+                      ),
+                    ),
                   Expanded(
                     child: ListView.builder(
                       scrollDirection: Axis.vertical,

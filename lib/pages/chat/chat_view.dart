@@ -188,7 +188,10 @@ class ChatView extends StatelessWidget {
           builder: (BuildContext context, snapshot) {
             var appbarBottomHeight = 0.0;
             final activeThreadId = controller.activeThreadId;
-            if (activeThreadId != null) {
+            final showGenericThreadRootJump =
+                activeThreadId != null &&
+                !controller.activeThreadShouldUseAgentSubchatUi;
+            if (showGenericThreadRootJump) {
               appbarBottomHeight += ChatAppBarListTile.fixedHeight;
             }
             if (controller.room.pinnedEventIds.isNotEmpty &&
@@ -246,7 +249,7 @@ class ChatView extends StatelessWidget {
                     mainAxisSize: .min,
                     children: [
                       PinnedEvents(controller),
-                      if (activeThreadId != null)
+                      if (showGenericThreadRootJump)
                         SizedBox(
                           height: ChatAppBarListTile.fixedHeight,
                           child: Center(
@@ -402,15 +405,16 @@ class ChatView extends StatelessWidget {
                                         children: [
                                           ReplyDisplay(controller),
                                           ChatInputRow(controller),
-                                          if (controller.currentModelSelection !=
+                                          if (controller
+                                                      .currentModelSelection !=
                                                   null ||
                                               controller.isFetchingCatalog)
                                             Padding(
                                               padding:
                                                   const EdgeInsets.symmetric(
-                                                horizontal: 12,
-                                                vertical: 2,
-                                              ),
+                                                    horizontal: 12,
+                                                    vertical: 2,
+                                                  ),
                                               child: Row(
                                                 children: [
                                                   ModelPickerPill(

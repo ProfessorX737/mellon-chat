@@ -5,17 +5,47 @@
 /// the client has no concept of "modes", just providers and models.
 library;
 
+String formatProviderLabel(String provider) {
+  switch (provider.trim().toLowerCase()) {
+    case 'openai':
+      return 'OpenAI';
+    case 'claude':
+    case 'anthropic':
+      return 'Claude';
+  }
+
+  final parts = provider
+      .trim()
+      .split(RegExp(r'[-_\s]+'))
+      .where((part) => part.isNotEmpty);
+  if (parts.isEmpty) return provider;
+  return parts
+      .map((part) => part[0].toUpperCase() + part.substring(1))
+      .join(' ');
+}
+
+bool isMellonModelProvider(String provider) {
+  switch (provider.trim().toLowerCase()) {
+    case 'openai':
+    case 'claude':
+    case 'anthropic':
+      return true;
+  }
+  return false;
+}
+
 /// The full model catalog returned inside org.mellonchat.channel_data
 class ModelCatalog {
   final ModelSelection current;
   final List<ProviderEntry> catalog;
   final DateTime fetchedAt;
 
-  /// Global per-room cache of model catalogs.
-  /// Keyed by room ID, persists across chat navigations within the session.
+  /// Global per-conversation cache of model catalogs.
+  /// Keyed by room ID or room/thread conversation key, persists across chat
+  /// navigations within the session.
   static final Map<String, ModelCatalog> _roomCache = {};
 
-  /// Get cached catalog for a room, or null if not cached / stale.
+  /// Get cached catalog for a conversation, or null if not cached / stale.
   static ModelCatalog? getForRoom(String roomId) {
     final cached = _roomCache[roomId];
     if (cached == null) return null;
@@ -26,20 +56,20 @@ class ModelCatalog {
     return cached;
   }
 
-  /// Cache a catalog for a room.
+  /// Cache a catalog for a conversation.
   static void cacheForRoom(String roomId, ModelCatalog catalog) {
     _roomCache[roomId] = catalog;
   }
 
-  /// Set of room IDs where we've already attempted auto-fetch this session,
-  /// so we don't send repeated /model commands.
+  /// Set of conversation keys where we've already attempted auto-fetch this
+  /// session, so we don't send repeated /model requests.
   static final Set<String> _autoFetchAttempted = {};
 
-  /// Whether auto-fetch has been attempted for this room.
+  /// Whether auto-fetch has been attempted for this conversation.
   static bool wasAutoFetchAttempted(String roomId) =>
       _autoFetchAttempted.contains(roomId);
 
-  /// Mark auto-fetch as attempted for this room.
+  /// Mark auto-fetch as attempted for this conversation.
   static void markAutoFetchAttempted(String roomId) =>
       _autoFetchAttempted.add(roomId);
 
@@ -51,9 +81,7 @@ class ModelCatalog {
 
   factory ModelCatalog.fromJson(Map<String, dynamic> json) {
     return ModelCatalog(
-      current: ModelSelection.fromJson(
-        json['current'] as Map<String, dynamic>,
-      ),
+      current: ModelSelection.fromJson(json['current'] as Map<String, dynamic>),
       catalog: (json['catalog'] as List<dynamic>)
           .map((e) => ProviderEntry.fromJson(e as Map<String, dynamic>))
           .toList(),
@@ -89,8 +117,8 @@ class ModelSelection {
   /// Full model ID as sent to the server: "provider/model"
   String get fullModelId => '$provider/$model';
 
-  /// Display label: "provider / model"
-  String get displayLabel => '$provider / $model';
+  /// Compact display label for the chat composer pill.
+  String get displayLabel => formatProviderLabel(provider);
 }
 
 /// A provider and its list of available models
@@ -118,9 +146,6 @@ class CatalogModel {
   CatalogModel({required this.id, required this.name});
 
   factory CatalogModel.fromJson(Map<String, dynamic> json) {
-    return CatalogModel(
-      id: json['id'] as String,
-      name: json['name'] as String,
-    );
+    return CatalogModel(id: json['id'] as String, name: json['name'] as String);
   }
 }

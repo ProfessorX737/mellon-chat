@@ -19,6 +19,10 @@ class ChatAppBarTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final room = controller.room;
+    final roomName = room.getLocalizedDisplayname(
+      MatrixLocals(L10n.of(context)),
+    );
+    final threadTitle = controller.activeSubchatTitle;
     if (controller.selectedEvents.isNotEmpty) {
       return Text(
         controller.selectedEvents.length.toString(),
@@ -40,13 +44,7 @@ class ChatAppBarTitle extends StatelessWidget {
         children: [
           Hero(
             tag: 'content_banner',
-            child: Avatar(
-              mxContent: room.avatar,
-              name: room.getLocalizedDisplayname(
-                MatrixLocals(L10n.of(context)),
-              ),
-              size: 32,
-            ),
+            child: Avatar(mxContent: room.avatar, name: roomName, size: 32),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -54,84 +52,101 @@ class ChatAppBarTitle extends StatelessWidget {
               crossAxisAlignment: .start,
               children: [
                 Text(
-                  room.getLocalizedDisplayname(MatrixLocals(L10n.of(context))),
+                  threadTitle ?? roomName,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 16),
                 ),
-                StreamBuilder(
-                  stream: room.client.onSyncStatus.stream,
-                  builder: (context, snapshot) {
-                    final status =
-                        room.client.onSyncStatus.value ??
-                        const SyncStatusUpdate(SyncStatus.waitingForResponse);
-                    final hide =
-                        FluffyThemes.isColumnMode(context) ||
-                        (room.client.onSync.value != null &&
-                            status.status != SyncStatus.error &&
-                            room.client.prevBatch != null);
-                    return AnimatedSize(
-                      duration: FluffyThemes.animationDuration,
-                      child: hide
-                          ? PresenceBuilder(
-                              userId: room.directChatMatrixID,
-                              builder: (context, presence) {
-                                final lastActiveTimestamp =
-                                    presence?.lastActiveTimestamp;
-                                final style = TextStyle(
-                                  fontSize: 12,
-                                  color: Theme.of(context).colorScheme.outline,
-                                );
-                                if (presence?.currentlyActive == true) {
-                                  return Text(
-                                    L10n.of(context).currentlyActive,
-                                    style: style,
+                if (controller.activeThreadId != null)
+                  Text(
+                    roomName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
+                  )
+                else
+                  StreamBuilder(
+                    stream: room.client.onSyncStatus.stream,
+                    builder: (context, snapshot) {
+                      final status =
+                          room.client.onSyncStatus.value ??
+                          const SyncStatusUpdate(SyncStatus.waitingForResponse);
+                      final hide =
+                          FluffyThemes.isColumnMode(context) ||
+                          (room.client.onSync.value != null &&
+                              status.status != SyncStatus.error &&
+                              room.client.prevBatch != null);
+                      return AnimatedSize(
+                        duration: FluffyThemes.animationDuration,
+                        child: hide
+                            ? PresenceBuilder(
+                                userId: room.directChatMatrixID,
+                                builder: (context, presence) {
+                                  final lastActiveTimestamp =
+                                      presence?.lastActiveTimestamp;
+                                  final style = TextStyle(
+                                    fontSize: 12,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.outline,
                                   );
-                                }
-                                if (lastActiveTimestamp != null) {
-                                  return Text(
-                                    L10n.of(context).lastActiveAgo(
-                                      lastActiveTimestamp.localizedTimeShort(
-                                        context,
+                                  if (presence?.currentlyActive == true) {
+                                    return Text(
+                                      L10n.of(context).currentlyActive,
+                                      style: style,
+                                    );
+                                  }
+                                  if (lastActiveTimestamp != null) {
+                                    return Text(
+                                      L10n.of(context).lastActiveAgo(
+                                        lastActiveTimestamp.localizedTimeShort(
+                                          context,
+                                        ),
                                       ),
-                                    ),
-                                    style: style,
-                                  );
-                                }
-                                return const SizedBox.shrink();
-                              },
-                            )
-                          : Row(
-                              children: [
-                                SizedBox.square(
-                                  dimension: 10,
-                                  child: CircularProgressIndicator.adaptive(
-                                    strokeWidth: 1,
-                                    value: status.progress,
-                                    valueColor: status.error != null
-                                        ? AlwaysStoppedAnimation<Color>(
-                                            Theme.of(context).colorScheme.error,
-                                          )
-                                        : null,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Expanded(
-                                  child: Text(
-                                    status.calcLocalizedString(context),
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: status.error != null
-                                          ? Theme.of(context).colorScheme.error
+                                      style: style,
+                                    );
+                                  }
+                                  return const SizedBox.shrink();
+                                },
+                              )
+                            : Row(
+                                children: [
+                                  SizedBox.square(
+                                    dimension: 10,
+                                    child: CircularProgressIndicator.adaptive(
+                                      strokeWidth: 1,
+                                      value: status.progress,
+                                      valueColor: status.error != null
+                                          ? AlwaysStoppedAnimation<Color>(
+                                              Theme.of(
+                                                context,
+                                              ).colorScheme.error,
+                                            )
                                           : null,
                                     ),
                                   ),
-                                ),
-                              ],
-                            ),
-                    );
-                  },
-                ),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: Text(
+                                      status.calcLocalizedString(context),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: status.error != null
+                                            ? Theme.of(
+                                                context,
+                                              ).colorScheme.error
+                                            : null,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      );
+                    },
+                  ),
               ],
             ),
           ),

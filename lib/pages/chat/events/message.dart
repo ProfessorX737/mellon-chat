@@ -13,6 +13,7 @@ import 'package:fluffychat/l10n/l10n.dart';
 import 'package:fluffychat/utils/adaptive_bottom_sheet.dart';
 import 'package:fluffychat/utils/date_time_extension.dart';
 import 'package:fluffychat/utils/file_description.dart';
+import 'package:fluffychat/utils/matrix_sdk_extensions/display_event_extension.dart';
 import 'package:fluffychat/utils/matrix_sdk_extensions/matrix_locals.dart';
 import 'package:fluffychat/utils/string_color.dart';
 import 'package:fluffychat/widgets/avatar.dart';
@@ -143,7 +144,7 @@ class Message extends StatelessWidget {
         ? MainAxisAlignment.end
         : MainAxisAlignment.start;
 
-    final displayEvent = event.getDisplayEvent(timeline);
+    final displayEvent = event.getMellonDisplayEvent(timeline);
     const hardCorner = Radius.circular(4);
     const roundedCorner = Radius.circular(AppConfig.borderRadius);
     final borderRadius = BorderRadius.only(
@@ -227,9 +228,7 @@ class Message extends StatelessWidget {
         child: Container(
           constraints: isBot
               ? null
-              : const BoxConstraints(
-                  maxWidth: FluffyThemes.maxTimelineWidth,
-                ),
+              : const BoxConstraints(maxWidth: FluffyThemes.maxTimelineWidth),
           padding: EdgeInsets.only(
             left: 8.0,
             right: 8.0,
@@ -337,7 +336,9 @@ class Message extends StatelessWidget {
                                         onPressed: () => onSelect(event),
                                       ),
                                     )
-                                  else if (nextEventSameSender || ownMessage || isBot)
+                                  else if (nextEventSameSender ||
+                                      ownMessage ||
+                                      isBot)
                                     SizedBox(
                                       width: isBot ? 8 : Avatar.defaultSize,
                                       child: isBot
@@ -347,12 +348,14 @@ class Message extends StatelessWidget {
                                                 width: 16,
                                                 height: 16,
                                                 child:
-                                                    event.status == EventStatus.error
+                                                    event.status ==
+                                                        EventStatus.error
                                                     ? const Icon(
                                                         Icons.error,
                                                         color: Colors.red,
                                                       )
-                                                    : event.fileSendingStatus != null
+                                                    : event.fileSendingStatus !=
+                                                          null
                                                     ? const CircularProgressIndicator.adaptive(
                                                         strokeWidth: 1,
                                                       )
@@ -501,11 +504,11 @@ class Message extends StatelessWidget {
                                                     constraints: isBot
                                                         ? null
                                                         : const BoxConstraints(
-                                                          maxWidth:
-                                                              FluffyThemes
-                                                                  .columnWidth *
-                                                              1.5,
-                                                        ),
+                                                            maxWidth:
+                                                                FluffyThemes
+                                                                    .columnWidth *
+                                                                1.5,
+                                                          ),
                                                     child: Column(
                                                       mainAxisSize: .min,
                                                       crossAxisAlignment:
@@ -602,8 +605,7 @@ class Message extends StatelessWidget {
                                                           selected: selected,
                                                         ),
                                                         if (!isBot &&
-                                                            event
-                                                            .hasAggregatedEvents(
+                                                            event.hasAggregatedEvents(
                                                               timeline,
                                                               RelationshipTypes
                                                                   .edit,

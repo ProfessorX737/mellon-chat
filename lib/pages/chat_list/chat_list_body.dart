@@ -1,12 +1,16 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
+import 'package:go_router/go_router.dart';
 import 'package:matrix/matrix.dart';
 
+import 'package:fluffychat/ai_stream/agent_subchat.dart';
 import 'package:fluffychat/config/setting_keys.dart';
 import 'package:fluffychat/l10n/l10n.dart';
+import 'package:fluffychat/pages/chat_list/agent_room_list_item.dart';
 import 'package:fluffychat/pages/chat_list/chat_list.dart';
 import 'package:fluffychat/pages/chat_list/chat_list_item.dart';
+import 'package:fluffychat/pages/chat_list/client_chooser_button.dart';
 import 'package:fluffychat/pages/chat_list/dummy_chat_list_item.dart';
 import 'package:fluffychat/pages/chat_list/search_title.dart';
 import 'package:fluffychat/pages/chat_list/space_view.dart';
@@ -27,6 +31,9 @@ class ChatListViewBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final hasNavigationRail =
+        FluffyThemes.isColumnMode(context) ||
+        AppSettings.displayNavigationRail.value;
 
     final client = Matrix.of(context).client;
     final activeSpace = controller.activeSpaceId;
@@ -58,6 +65,9 @@ class ChatListViewBody extends StatelessWidget {
     final userSearchResult = controller.userSearchResult;
     const dummyChatCount = 4;
     final filter = controller.searchController.text.toLowerCase();
+    final activeThreadId = GoRouterState.of(
+      context,
+    ).uri.queryParameters['thread'];
     return StreamBuilder(
       key: ValueKey(client.userID.toString()),
       stream: client.onSync.stream
@@ -71,6 +81,19 @@ class ChatListViewBody extends StatelessWidget {
             controller: controller.scrollController,
             slivers: [
               ChatListHeader(controller: controller),
+              if (!hasNavigationRail && !controller.isSearchMode)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: SizedBox.square(
+                        dimension: 48,
+                        child: ClientChooserButton(controller),
+                      ),
+                    ),
+                  ),
+                ),
               SliverList(
                 delegate: SliverChildListDelegate([
                   if (controller.isSearchMode) ...[
@@ -233,6 +256,31 @@ class ChatListViewBody extends StatelessWidget {
                   itemBuilder: (BuildContext context, int i) {
                     final room = rooms[i];
                     final space = spaceDelegateCandidates[room.id];
+                    if (room.membership == Membership.join &&
+                        isLikelyAgentRoom(room)) {
+                      return AgentRoomListItem(
+                        room,
+                        space: space,
+                        key: Key('agent_chat_list_item_${room.id}'),
+                        filter: filter,
+                        onTap: () => controller.onChatTap(room),
+                        onLongPress: (context) =>
+                            controller.chatContextAction(room, context, space),
+                        activeChat: controller.activeChat == room.id,
+                        activeThreadId: activeThreadId,
+                        onSubchatTap: (threadId) {
+                          Matrix.of(context).setActiveClient(room.client);
+                          final query = Uri(
+                            queryParameters: {
+                              if (room.client.userID != null)
+                                'client': room.client.userID!,
+                              'thread': threadId,
+                            },
+                          ).query;
+                          context.go('/rooms/${room.id}?$query');
+                        },
+                      );
+                    }
                     return ChatListItem(
                       room,
                       space: space,

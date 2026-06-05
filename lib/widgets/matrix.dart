@@ -18,6 +18,7 @@ import 'package:url_launcher/url_launcher_string.dart';
 
 import 'package:fluffychat/l10n/l10n.dart';
 import 'package:fluffychat/utils/client_manager.dart';
+import 'package:fluffychat/utils/dev_log_sink.dart';
 import 'package:fluffychat/utils/init_with_restore.dart';
 import 'package:fluffychat/utils/matrix_sdk_extensions/matrix_file_extension.dart';
 import 'package:fluffychat/utils/platform_infos.dart';
@@ -180,7 +181,9 @@ class MatrixState extends State<Matrix> with WidgetsBindingObserver {
   final onKeyVerificationRequestSub = <String, StreamSubscription>{};
   final onNotification = <String, StreamSubscription>{};
   final onLoginStateChanged = <String, StreamSubscription<LoginState>>{};
+  final onDebugSyncStatus = <String, StreamSubscription<SyncStatusUpdate>>{};
   final onUiaRequest = <String, StreamSubscription<UiaRequest>>{};
+  final _debugSyncErrorCount = <String, int>{};
 
   String? _cachedPassword;
   Timer? _cachedPasswordClearTimer;
@@ -207,10 +210,19 @@ class MatrixState extends State<Matrix> with WidgetsBindingObserver {
       ? NotificationsClient()
       : null;
   final Map<String, int> linuxNotificationIds = {};
+  int _debugBuildCount = 0;
 
   @override
   void initState() {
     super.initState();
+    DevLogSink.startup('mellon.matrix.init_state', {
+      'client_count': widget.clients.length,
+      'logged_client_count': widget.clients.where((c) => c.isLogged()).length,
+      'has_child': widget.child != null,
+      'uri_path': Uri.base.path,
+      'uri_query': Uri.base.query,
+      'uri_fragment': Uri.base.fragment,
+    });
     WidgetsBinding.instance.addObserver(this);
     initMatrix();
   }
@@ -223,6 +235,7 @@ class MatrixState extends State<Matrix> with WidgetsBindingObserver {
       );
       return;
     }
+    _registerDebugSyncStatus(c);
     onRoomKeyRequestSub[name] ??= c.onRoomKeyRequest.stream.listen((
       RoomKeyRequest request,
     ) async {
@@ -293,6 +306,32 @@ class MatrixState extends State<Matrix> with WidgetsBindingObserver {
     }
   }
 
+  void _registerDebugSyncStatus(Client client) {
+    final name = client.clientName;
+    onDebugSyncStatus[name] ??= client.onSyncStatus.stream.listen((status) {
+      if (status.status != SyncStatus.error) return;
+
+      final count = (_debugSyncErrorCount[name] ?? 0) + 1;
+      _debugSyncErrorCount[name] = count;
+      if (count > 10) return;
+
+      DevLogSink.startup('mellon.matrix_sync_status_error', {
+        'client_name': name,
+        'user_id': client.userID,
+        'device_id': client.deviceID,
+        'homeserver': client.homeserver?.toString(),
+        'count': count,
+        'status': status.status.name,
+        'exception': status.error?.exception.toString(),
+        'stack': status.error?.stackTrace
+            ?.toString()
+            .split('\n')
+            .take(12)
+            .join('\n'),
+      });
+    });
+  }
+
   void _cancelSubs(String name) {
     onRoomKeyRequestSub[name]?.cancel();
     onRoomKeyRequestSub.remove(name);
@@ -302,6 +341,9 @@ class MatrixState extends State<Matrix> with WidgetsBindingObserver {
     onLoginStateChanged.remove(name);
     onNotification[name]?.cancel();
     onNotification.remove(name);
+    onDebugSyncStatus[name]?.cancel();
+    onDebugSyncStatus.remove(name);
+    _debugSyncErrorCount.remove(name);
   }
 
   void initMatrix() {
@@ -373,10 +415,21 @@ class MatrixState extends State<Matrix> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
 
-    onRoomKeyRequestSub.values.map((s) => s.cancel());
-    onKeyVerificationRequestSub.values.map((s) => s.cancel());
-    onLoginStateChanged.values.map((s) => s.cancel());
-    onNotification.values.map((s) => s.cancel());
+    for (final sub in onRoomKeyRequestSub.values) {
+      unawaited(sub.cancel());
+    }
+    for (final sub in onKeyVerificationRequestSub.values) {
+      unawaited(sub.cancel());
+    }
+    for (final sub in onLoginStateChanged.values) {
+      unawaited(sub.cancel());
+    }
+    for (final sub in onNotification.values) {
+      unawaited(sub.cancel());
+    }
+    for (final sub in onDebugSyncStatus.values) {
+      unawaited(sub.cancel());
+    }
     client.httpClient.close();
 
     linuxNotifications?.close();
@@ -386,6 +439,18 @@ class MatrixState extends State<Matrix> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    if (_debugBuildCount < 5) {
+      _debugBuildCount++;
+      DevLogSink.startup('mellon.matrix.build', {
+        'build_count': _debugBuildCount,
+        'client_count': widget.clients.length,
+        'logged_client_count': widget.clients.where((c) => c.isLogged()).length,
+        'has_child': widget.child != null,
+        'uri_path': Uri.base.path,
+        'uri_query': Uri.base.query,
+        'uri_fragment': Uri.base.fragment,
+      });
+    }
     return Provider(create: (_) => this, child: widget.child);
   }
 

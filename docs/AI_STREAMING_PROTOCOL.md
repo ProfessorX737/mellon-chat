@@ -35,7 +35,48 @@ Matrix supports **extensible events** through custom content blocks. We can add 
 
 ## Part 2: Streaming Update Mechanism
 
-### Option A: Message Edits (Recommended)
+### Option A: Native Response Snapshots (Recommended)
+
+The bot gives each assistant answer a stable `response_id`, then sends visible
+snapshot messages for that response. Mellon Chat collapses older snapshots with
+the same response id and renders the newest one. Other Matrix clients still see
+ordinary text messages.
+
+```json
+{
+  "type": "m.room.message",
+  "content": {
+    "msgtype": "m.text",
+    "body": "Let me check the file...",
+    "m.relates_to": {
+      "rel_type": "m.thread",
+      "event_id": "$thread_root"
+    },
+    "org.mellonchat.response": {
+      "response_id": "answer-123",
+      "sequence": 42,
+      "thread_root_event_id": "$thread_root",
+      "kind": "snapshot",
+      "status": "streaming"
+    },
+    "org.mellonchat.ai_stream": {
+      "status": "streaming"
+    }
+  }
+}
+```
+
+Recommended event pattern:
+
+1. Bot sends an initial snapshot with `sequence: 1` and `status: "streaming"`.
+2. Bot updates live UI via its streaming channel and/or occasional snapshot messages.
+3. Bot sends a final snapshot with the full body and `status: "complete"`.
+4. Mellon Chat displays only the latest visible snapshot for `answer-123`.
+
+This avoids reconstructing visible output by fetching every edit relation. The
+plain `body` remains the compatibility surface for regular Matrix clients.
+
+### Option B: Message Edits (Legacy Fallback)
 
 The bot sends an initial message, then **edits** it repeatedly as tokens arrive:
 
@@ -44,7 +85,7 @@ The bot sends an initial message, then **edits** it repeatedly as tokens arrive:
 3. Bot edits: `{"body": "Let me check...\n\n⚡ Reading file", "org.mellonchat.ai_stream": {"status": "tool", "tool_name": "Read"}}`
 4. Bot final edit: `{"body": "The file contains...", "org.mellonchat.ai_stream": {"status": "complete"}}`
 
-### Option B: Custom Event Type
+### Option C: Custom Event Type
 
 Use a dedicated event type for streaming updates:
 
@@ -234,6 +275,13 @@ OpenClaw needs to:
 const content = {
   msgtype: 'm.text',
   body: currentText,
+  'org.mellonchat.response': {
+    response_id: responseId,
+    sequence,
+    thread_root_event_id: threadRootEventId,
+    kind: 'snapshot',
+    status: 'streaming',
+  },
   'org.mellonchat.ai_stream': {
     status: 'streaming',
     tool_name: currentTool?.name,
@@ -242,7 +290,7 @@ const content = {
 };
 ```
 
-2. **Edit message as tokens arrive** (instead of sending new messages)
+2. **Send sparse snapshot messages while streaming**, plus one final complete snapshot. Do not persist every token as a Matrix edit.
 
 3. **Listen for stop signals**:
 ```typescript

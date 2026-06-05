@@ -133,7 +133,12 @@ class ChatListController extends State<ChatList>
       return;
     }
 
-    context.go('/rooms/${room.id}');
+    Matrix.of(context).setActiveClient(room.client);
+    final clientId = room.client.userID;
+    final clientQuery = clientId == null
+        ? ''
+        : '?client=${Uri.encodeQueryComponent(clientId)}';
+    context.go('/rooms/${room.id}$clientQuery');
   }
 
   bool Function(Room) getRoomFilterByActiveFilter(ActiveFilter activeFilter) {

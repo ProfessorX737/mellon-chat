@@ -5,6 +5,7 @@ import 'package:dynamic_color/dynamic_color.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:fluffychat/utils/dev_log_sink.dart';
 import 'package:fluffychat/utils/color_value.dart';
 
 class ThemeBuilder extends StatefulWidget {
@@ -33,6 +34,8 @@ class ThemeController extends State<ThemeBuilder> {
   SharedPreferences? _sharedPreferences;
   ThemeMode? _themeMode;
   Color? _primaryColor;
+  int _debugBuildCount = 0;
+  int _debugDynamicBuildCount = 0;
 
   ThemeMode get themeMode => _themeMode ?? ThemeMode.system;
 
@@ -42,18 +45,34 @@ class ThemeController extends State<ThemeBuilder> {
       Provider.of<ThemeController>(context, listen: false);
 
   void _loadData(dynamic _) async {
-    final preferences = _sharedPreferences ??=
-        await SharedPreferences.getInstance();
-
-    final rawThemeMode = preferences.getString(widget.themeModeSettingsKey);
-    final rawColor = preferences.getInt(widget.primaryColorSettingsKey);
-
-    setState(() {
-      _themeMode = ThemeMode.values.singleWhereOrNull(
-        (value) => value.name == rawThemeMode,
-      );
-      _primaryColor = rawColor == null ? null : Color(rawColor);
+    DevLogSink.startup('mellon.theme.load_start', {
+      'theme_key': widget.themeModeSettingsKey,
+      'primary_color_key': widget.primaryColorSettingsKey,
     });
+    try {
+      final preferences = _sharedPreferences ??=
+          await SharedPreferences.getInstance();
+
+      final rawThemeMode = preferences.getString(widget.themeModeSettingsKey);
+      final rawColor = preferences.getInt(widget.primaryColorSettingsKey);
+
+      setState(() {
+        _themeMode = ThemeMode.values.singleWhereOrNull(
+          (value) => value.name == rawThemeMode,
+        );
+        _primaryColor = rawColor == null ? null : Color(rawColor);
+      });
+      DevLogSink.startup('mellon.theme.load_done', {
+        'raw_theme_mode': rawThemeMode,
+        'has_raw_color': rawColor != null,
+      });
+    } catch (error, stack) {
+      DevLogSink.startup('mellon.theme.load_error', {
+        'error': error.toString(),
+        'stack': stack.toString().split('\n').take(12).join('\n'),
+      });
+      rethrow;
+    }
   }
 
   Future<void> setThemeMode(ThemeMode newThemeMode) async {
@@ -83,17 +102,43 @@ class ThemeController extends State<ThemeBuilder> {
 
   @override
   void initState() {
+    DevLogSink.startup('mellon.theme.init_state', {
+      'theme_key': widget.themeModeSettingsKey,
+      'primary_color_key': widget.primaryColorSettingsKey,
+    });
     WidgetsBinding.instance.addPostFrameCallback(_loadData);
     super.initState();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_debugBuildCount < 5) {
+      _debugBuildCount++;
+      DevLogSink.startup('mellon.theme.build', {
+        'build_count': _debugBuildCount,
+        'theme_mode': themeMode.name,
+        'has_primary_color': primaryColor != null,
+      });
+    }
     return Provider(
       create: (_) => this,
       child: DynamicColorBuilder(
-        builder: (light, _) =>
-            widget.builder(context, themeMode, primaryColor ?? light?.primary),
+        builder: (light, _) {
+          if (_debugDynamicBuildCount < 5) {
+            _debugDynamicBuildCount++;
+            DevLogSink.startup('mellon.theme.dynamic_builder', {
+              'build_count': _debugDynamicBuildCount,
+              'theme_mode': themeMode.name,
+              'has_primary_color': primaryColor != null,
+              'has_dynamic_light': light != null,
+            });
+          }
+          return widget.builder(
+            context,
+            themeMode,
+            primaryColor ?? light?.primary,
+          );
+        },
       ),
     );
   }

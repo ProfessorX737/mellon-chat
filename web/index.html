@@ -41,6 +41,69 @@
 
 <body>
   <script>
+    (function () {
+      var sessionId = Date.now().toString(36) + Math.random().toString(36).slice(2);
+
+      function safeString(value) {
+        try {
+          if (value === undefined) return undefined;
+          if (value === null) return null;
+          if (typeof value === 'string') return value;
+          if (value && value.message) return String(value.message);
+          return String(value);
+        } catch (_) {
+          return '[unstringifiable]';
+        }
+      }
+
+      function postDebug(event, fields) {
+        try {
+          var payload = Object.assign({
+            source: 'mellon-web-browser',
+            event: event,
+            session_id: sessionId,
+            time: new Date().toISOString()
+          }, fields || {});
+          fetch('/__mellon_debug_logs', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(payload),
+            keepalive: true
+          }).catch(function () {});
+        } catch (_) {}
+      }
+
+      window.__mellonDebugPost = postDebug;
+
+      window.addEventListener('error', function (event) {
+        var target = event.target;
+        if (target && target !== window && (target.src || target.href)) {
+          postDebug('mellon.browser.resource_error', {
+            tag: target.tagName,
+            url: target.src || target.href
+          });
+          return;
+        }
+
+        postDebug('mellon.browser.error', {
+          message: event.message,
+          filename: event.filename,
+          lineno: event.lineno,
+          colno: event.colno,
+          error: safeString(event.error),
+          stack: event.error && event.error.stack ? String(event.error.stack).split('\n').slice(0, 12).join('\n') : undefined
+        });
+      }, true);
+
+      window.addEventListener('unhandledrejection', function (event) {
+        var reason = event.reason;
+        postDebug('mellon.browser.unhandled_rejection', {
+          reason: safeString(reason),
+          stack: reason && reason.stack ? String(reason.stack).split('\n').slice(0, 12).join('\n') : undefined
+        });
+      });
+    })();
+
     window.addEventListener('load', function (ev) {
       {{flutter_js}}
       {{flutter_build_config}}

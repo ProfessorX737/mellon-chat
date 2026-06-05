@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -75,7 +73,9 @@ class _CollapsibleToolOutputState extends State<CollapsibleToolOutput>
         children: [
           // Header row — minimal, no box, clickable only on text area
           GestureDetector(
-            onTap: _hasOutput ? () => setState(() => _isExpanded = !_isExpanded) : null,
+            onTap: _hasOutput
+                ? () => setState(() => _isExpanded = !_isExpanded)
+                : null,
             behavior: HitTestBehavior.opaque,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -137,7 +137,12 @@ class _CollapsibleToolOutputState extends State<CollapsibleToolOutput>
         ConstrainedBox(
           constraints: BoxConstraints(maxHeight: maxHeight),
           child: SingleChildScrollView(
-            padding: const EdgeInsets.only(left: 32, right: 12, top: 2, bottom: 4),
+            padding: const EdgeInsets.only(
+              left: 32,
+              right: 12,
+              top: 2,
+              bottom: 4,
+            ),
             child: SelectableText(
               output,
               style: theme.textTheme.bodySmall?.copyWith(
@@ -190,8 +195,7 @@ class PendingToolIndicator extends StatelessWidget {
   });
 
   String get _activeDescription {
-    return CompletedTool(name: toolName, args: toolArgs)
-        .activeDescription;
+    return CompletedTool(name: toolName, args: toolArgs).activeDescription;
   }
 
   @override
@@ -237,20 +241,15 @@ class _ToolGroup {
   const _ToolGroup(this.tool, this.count);
 }
 
-/// Widget that renders a list of completed tools.
+/// Widget that renders a list of tool calls.
 /// Groups consecutive tools with the same name (e.g. "Read x12")
 /// to avoid overwhelming the UI when agents make many tool calls.
-///
-/// When [isStreaming] is true, newly appearing tools are briefly shown
-/// as "running" (with a spinner and expanded state) before transitioning
-/// to completed. This compensates for the Matrix sync protocol coalescing
-/// rapid edits, which causes tools to jump from non-existent to completed
-/// without ever showing the intermediate "running" state.
-class CompletedToolsList extends StatefulWidget {
+class CompletedToolsList extends StatelessWidget {
   final List<CompletedTool> tools;
 
-  /// Whether the parent message is currently streaming.
-  /// When true, new tools get an introduction animation.
+  /// Whether the parent message is currently streaming. The individual tool
+  /// status still comes from [tools]; completed tools must not be animated back
+  /// into a running state when a newer response snapshot arrives.
   final bool isStreaming;
 
   const CompletedToolsList({
@@ -259,82 +258,12 @@ class CompletedToolsList extends StatefulWidget {
     this.isStreaming = false,
   });
 
-  @override
-  State<CompletedToolsList> createState() => _CompletedToolsListState();
-}
-
-class _CompletedToolsListState extends State<CompletedToolsList> {
-  /// Number of tools that have been "introduced" (shown as running, then
-  /// transitioned to completed). Tools at index < _introducedCount are
-  /// rendered normally; tools at index >= _introducedCount are shown as
-  /// PendingToolIndicator briefly before being introduced.
-  int _introducedCount = 0;
-
-  /// Timer for the current introduction animation.
-  Timer? _introTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.isStreaming) {
-      // Message is actively streaming — animate tools: start at 0 so all
-      // tools get the brief "running" introduction before flipping to completed.
-      _introducedCount = 0;
-      debugPrint('[tool-display] initState: streaming=true, tools=${widget.tools.length}, introducedCount=0 (will animate)');
-      if (widget.tools.isNotEmpty) {
-        _introTimer = Timer(const Duration(milliseconds: 1000), () {
-          if (mounted) {
-            setState(() {
-              _introducedCount = widget.tools.length;
-              debugPrint('[tool-display] intro timer fired: introducedCount=$_introducedCount');
-            });
-          }
-        });
-      }
-    } else {
-      // Message is NOT streaming (old/completed message, or navigated back) —
-      // show all tools immediately as completed. No animation.
-      _introducedCount = widget.tools.length;
-      debugPrint('[tool-display] initState: streaming=false, tools=${widget.tools.length}, introducedCount=$_introducedCount (no animation)');
-    }
-  }
-
-  @override
-  void didUpdateWidget(CompletedToolsList oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    final newToolCount = widget.tools.length;
-
-    if (newToolCount > _introducedCount) {
-      if (widget.isStreaming) {
-        // Actively streaming — animate new tools with 1s "running" intro
-        _introTimer?.cancel();
-        _introTimer = Timer(const Duration(milliseconds: 1000), () {
-          if (mounted) {
-            setState(() {
-              _introducedCount = widget.tools.length;
-            });
-          }
-        });
-      } else {
-        // Not streaming — show new tools immediately, no animation
-        _introducedCount = newToolCount;
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _introTimer?.cancel();
-    super.dispose();
-  }
-
   /// Group consecutive tools with the same name.
-  /// If a tool has output/args, is running, or is being "introduced", it stays as its own entry.
+  /// If a tool has output/args or is running, it stays as its own entry.
   List<_ToolGroup> _groupTools(List<CompletedTool> effectiveTools) {
     if (effectiveTools.isEmpty) return [];
     final groups = <_ToolGroup>[];
-    int i = 0;
+    var i = 0;
     while (i < effectiveTools.length) {
       final tool = effectiveTools[i];
       // Never group running tools — they need their own indicator
@@ -345,7 +274,7 @@ class _CompletedToolsListState extends State<CompletedToolsList> {
       }
       // Only group completed tools that have no output (collapsed with no detail)
       if (tool.output == null || tool.output!.isEmpty) {
-        int count = 1;
+        var count = 1;
         while (i + count < effectiveTools.length &&
             !effectiveTools[i + count].isRunning &&
             effectiveTools[i + count].name == tool.name &&
@@ -365,49 +294,28 @@ class _CompletedToolsListState extends State<CompletedToolsList> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.tools.isEmpty) return const SizedBox.shrink();
+    if (tools.isEmpty) return const SizedBox.shrink();
 
-    // Build effective tools list: tools beyond _introducedCount are
-    // shown as "running" (pending introduction animation).
-    final effectiveTools = <CompletedTool>[];
-    for (int i = 0; i < widget.tools.length; i++) {
-      final tool = widget.tools[i];
-      if (i >= _introducedCount && !tool.isRunning) {
-        // This tool appeared recently — show as running briefly
-        effectiveTools.add(CompletedTool(
-          name: tool.name,
-          status: 'running', // Override to running for animation
-          args: tool.args,
-          output: tool.output,
-          collapsed: false,
-          maxHeight: tool.maxHeight,
-          textPosition: tool.textPosition,
-        ));
-      } else {
-        effectiveTools.add(tool);
-      }
-    }
-
-    final groups = _groupTools(effectiveTools);
+    final groups = _groupTools(tools);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: groups.map((group) {
-          // Running tool (real or introducing) → show pending indicator
-          if (group.tool.isRunning) {
-            return PendingToolIndicator(
-              toolName: group.tool.name,
-              toolArgs: group.tool.args,
-            );
-          }
-          if (group.count > 1) {
-            return _GroupedToolHeader(
-              toolName: group.tool.name,
-              count: group.count,
-            );
-          }
-          return CollapsibleToolOutput(tool: group.tool);
-        }).toList(),
+        // Running tool from stream metadata → show pending indicator.
+        if (group.tool.isRunning) {
+          return PendingToolIndicator(
+            toolName: group.tool.name,
+            toolArgs: group.tool.args,
+          );
+        }
+        if (group.count > 1) {
+          return _GroupedToolHeader(
+            toolName: group.tool.name,
+            count: group.count,
+          );
+        }
+        return CollapsibleToolOutput(tool: group.tool);
+      }).toList(),
     );
   }
 }
@@ -417,32 +325,27 @@ class _GroupedToolHeader extends StatelessWidget {
   final String toolName;
   final int count;
 
-  const _GroupedToolHeader({
-    required this.toolName,
-    required this.count,
-  });
+  const _GroupedToolHeader({required this.toolName, required this.count});
 
   @override
   Widget build(BuildContext context) {
-    final mutedColor = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45);
+    final mutedColor = Theme.of(
+      context,
+    ).colorScheme.onSurface.withValues(alpha: 0.45);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 1),
       child: Row(
         children: [
-          Icon(
-            getToolIcon(toolName),
-            size: 14,
-            color: mutedColor,
-          ),
+          Icon(getToolIcon(toolName), size: 14, color: mutedColor),
           const SizedBox(width: 6),
           Text(
             '$toolName x$count',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  fontFamily: 'monospace',
-                  color: mutedColor,
-                  fontSize: 12,
-                ),
+              fontFamily: 'monospace',
+              color: mutedColor,
+              fontSize: 12,
+            ),
           ),
         ],
       ),

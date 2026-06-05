@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:matrix/matrix.dart';
 
 import 'package:fluffychat/l10n/l10n.dart';
+import 'package:fluffychat/utils/matrix_sdk_extensions/display_event_extension.dart';
 import 'package:fluffychat/utils/matrix_sdk_extensions/matrix_locals.dart';
 import '../../config/themes.dart';
 import 'chat.dart';
@@ -38,7 +39,9 @@ class ReplyDisplay extends StatelessWidget {
                     timeline: controller.timeline!,
                   )
                 : _EditContent(
-                    controller.editEvent?.getDisplayEvent(controller.timeline!),
+                    controller.editEvent?.getMellonDisplayEvent(
+                      controller.timeline!,
+                    ),
                   ),
           ),
         ],

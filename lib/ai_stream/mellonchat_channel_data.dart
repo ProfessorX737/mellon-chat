@@ -9,8 +9,13 @@ import 'model_catalog.dart';
 class MellonchatChannelData {
   final String type;
   final ModelCatalog? modelCatalog;
+  final ModelSelection? currentModel;
 
-  MellonchatChannelData({required this.type, this.modelCatalog});
+  MellonchatChannelData({
+    required this.type,
+    this.modelCatalog,
+    this.currentModel,
+  });
 
   /// Try to extract mellonchat channel data from a Matrix event content map.
   ///
@@ -39,8 +44,22 @@ class MellonchatChannelData {
       }
     }
 
+    if (type == 'current_model') {
+      try {
+        return MellonchatChannelData(
+          type: type,
+          currentModel: ModelSelection.fromJson(
+            mellonchat['current'] as Map<String, dynamic>,
+          ),
+        );
+      } catch (_) {
+        return null;
+      }
+    }
+
     return MellonchatChannelData(type: type);
   }
 
   bool get isModelPicker => type == 'model_picker';
+  bool get isCurrentModel => type == 'current_model';
 }

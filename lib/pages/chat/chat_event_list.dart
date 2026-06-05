@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:collection/collection.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
 
+import 'package:fluffychat/ai_stream/agent_subchat.dart';
+import 'package:fluffychat/ai_stream/ai_streaming_indicator.dart';
 import 'package:fluffychat/config/themes.dart';
 import 'package:fluffychat/l10n/l10n.dart';
 import 'package:fluffychat/pages/chat/chat.dart';
@@ -24,6 +26,9 @@ class ChatEventList extends StatelessWidget {
     final timeline = controller.timeline;
 
     if (timeline == null) {
+      return const Center(child: CupertinoActivityIndicator());
+    }
+    if (controller.showInitialSubchatLoading) {
       return const Center(child: CupertinoActivityIndicator());
     }
     final theme = Theme.of(context);
@@ -65,6 +70,23 @@ class ChatEventList extends StatelessWidget {
             // Footer to display typing indicator and read receipts:
             if (i == 0) {
               if (timeline.canRequestFuture) {
+                if (controller.activeThreadId != null) {
+                  return Column(
+                    mainAxisSize: .min,
+                    children: [
+                      SeenByRow(controller),
+                      _ConversationActivityIndicator(controller),
+                      if (events.isEmpty)
+                        Center(
+                          child: TextButton.icon(
+                            onPressed: controller.refreshActiveThread,
+                            icon: const Icon(Icons.sync_outlined),
+                            label: const Text('Refresh thread'),
+                          ),
+                        ),
+                    ],
+                  );
+                }
                 return Center(
                   child: TextButton.icon(
                     onPressed: timeline.isRequestingFuture
@@ -79,7 +101,10 @@ class ChatEventList extends StatelessWidget {
               }
               return Column(
                 mainAxisSize: .min,
-                children: [SeenByRow(controller), TypingIndicators(controller)],
+                children: [
+                  SeenByRow(controller),
+                  _ConversationActivityIndicator(controller),
+                ],
               );
             }
 
@@ -189,5 +214,38 @@ class ChatEventList extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _ConversationActivityIndicator extends StatelessWidget {
+  final ChatController controller;
+
+  const _ConversationActivityIndicator(this.controller);
+
+  @override
+  Widget build(BuildContext context) {
+    final aiStream = controller.activeAiStreamContent;
+    if (aiStream != null) {
+      return Container(
+        width: double.infinity,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            maxWidth: FluffyThemes.maxTimelineWidth,
+          ),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: AIStreamingIndicator(aiStream: aiStream),
+          ),
+        ),
+      );
+    }
+
+    if (isLikelyAgentRoom(controller.room)) {
+      return const SizedBox.shrink();
+    }
+
+    return TypingIndicators(controller);
   }
 }

@@ -8,6 +8,7 @@ import 'package:fluffychat/config/setting_keys.dart';
 import 'package:fluffychat/l10n/l10n.dart';
 import 'package:fluffychat/pages/chat/recording_input_row.dart';
 import 'package:fluffychat/pages/chat/recording_view_model.dart';
+import 'package:fluffychat/utils/matrix_sdk_extensions/display_event_extension.dart';
 import 'package:fluffychat/utils/other_party_can_receive.dart';
 import 'package:fluffychat/utils/platform_infos.dart';
 import 'package:fluffychat/widgets/avatar.dart';
@@ -91,7 +92,7 @@ class ChatInputRow extends StatelessWidget {
                     ),
                   controller.selectedEvents.length == 1
                       ? controller.selectedEvents.first
-                                .getDisplayEvent(controller.timeline!)
+                                .getMellonDisplayEvent(controller.timeline!)
                                 .status
                                 .isSent
                             ? SizedBox(
@@ -354,19 +355,13 @@ class ChatInputRow extends StatelessWidget {
                       ),
                     ),
                   ),
-                  StreamBuilder<Object>(
-                    stream: controller.room.client.onSync.stream.where(
-                      (syncUpdate) =>
-                          syncUpdate.rooms?.join?[controller.room.id]
-                              ?.ephemeral
-                              ?.any((e) => e.type == 'm.typing') ??
-                          false,
-                    ),
-                    builder: (context, _) => Container(
+                  ValueListenableBuilder<bool>(
+                    valueListenable: controller.botRunningListenable,
+                    builder: (context, isBotRunning, _) => Container(
                       height: height,
                       width: height,
                       alignment: Alignment.center,
-                      child: controller.isBotRunning
+                      child: isBotRunning
                           ? IconButton(
                               tooltip: L10n.of(context).cancel,
                               onPressed: controller.stopBot,
@@ -377,7 +372,7 @@ class ChatInputRow extends StatelessWidget {
                               icon: const Icon(Icons.stop),
                             )
                           : PlatformInfos.platformCanRecord &&
-                              controller.sendController.text.isEmpty
+                                controller.sendController.text.isEmpty
                           ? IconButton(
                               tooltip: L10n.of(context).voiceMessage,
                               onPressed: () => recordingViewModel

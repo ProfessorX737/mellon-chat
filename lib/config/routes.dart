@@ -40,31 +40,79 @@ import 'package:fluffychat/widgets/log_view.dart';
 import 'package:fluffychat/widgets/matrix.dart';
 import 'package:fluffychat/widgets/share_scaffold_dialog.dart';
 import 'package:fluffychat/ai_stream/ai_stream.dart';
+import 'package:fluffychat/utils/dev_log_sink.dart';
 
 abstract class AppRoutes {
   static FutureOr<String?> loggedInRedirect(
     BuildContext context,
     GoRouterState state,
-  ) => Matrix.of(context).widget.clients.any((client) => client.isLogged())
-      ? '/rooms'
-      : null;
+  ) {
+    final loggedIn = Matrix.of(
+      context,
+    ).widget.clients.any((client) => client.isLogged());
+    final target = loggedIn ? '/rooms' : null;
+    _logRoute('mellon.route.logged_in_redirect', state, {
+      'logged_in': loggedIn,
+      'target': target,
+    });
+    return target;
+  }
 
   static FutureOr<String?> loggedOutRedirect(
     BuildContext context,
     GoRouterState state,
-  ) => Matrix.of(context).widget.clients.any((client) => client.isLogged())
-      ? null
-      : '/home';
+  ) {
+    final loggedIn = Matrix.of(
+      context,
+    ).widget.clients.any((client) => client.isLogged());
+    final target = loggedIn ? null : '/home';
+    _logRoute('mellon.route.logged_out_redirect', state, {
+      'logged_in': loggedIn,
+      'target': target,
+    });
+    return target;
+  }
+
+  static void _logRoute(
+    String event,
+    GoRouterState state, [
+    Map<String, Object?> fields = const {},
+  ]) {
+    DevLogSink.startup(event, {
+      'uri': state.uri.toString(),
+      'uri_path': state.uri.path,
+      'uri_query': state.uri.query,
+      'uri_fragment': state.uri.fragment,
+      'base_path': Uri.base.path,
+      'base_query': Uri.base.query,
+      'base_fragment': Uri.base.fragment,
+      'matched_location': state.matchedLocation,
+      'full_path': state.fullPath,
+      'path': state.path,
+      'room_id': state.pathParameters['roomid'],
+      'client_id': state.uri.queryParameters['client'],
+      'thread': state.uri.queryParameters['thread'],
+      'event_id': state.uri.queryParameters['event'],
+      ...fields,
+    });
+  }
 
   AppRoutes();
 
   static final List<RouteBase> routes = [
     GoRoute(
       path: '/',
-      redirect: (context, state) =>
-          Matrix.of(context).widget.clients.any((client) => client.isLogged())
-          ? '/rooms'
-          : '/home',
+      redirect: (context, state) {
+        final loggedIn = Matrix.of(
+          context,
+        ).widget.clients.any((client) => client.isLogged());
+        final target = loggedIn ? '/rooms' : '/home';
+        _logRoute('mellon.route.root_redirect', state, {
+          'logged_in': loggedIn,
+          'target': target,
+        });
+        return target;
+      },
     ),
     GoRoute(
       path: '/home',
@@ -123,36 +171,50 @@ abstract class AppRoutes {
       // Never use a transition on the shell route. Changing the PageBuilder
       // here based on a MediaQuery causes the child to briefly be rendered
       // twice with the same GlobalKey, blowing up the rendering.
-      pageBuilder: (context, state, child) => noTransitionPageBuilder(
-        context,
-        state,
-        FluffyThemes.isColumnMode(context) &&
-                state.fullPath?.startsWith('/rooms/settings') == false
-            ? TwoColumnLayout(
-                mainView: ChatList(
-                  activeChat: state.pathParameters['roomid'],
-                  activeSpace: state.uri.queryParameters['spaceId'],
-                  displayNavigationRail:
-                      state.path?.startsWith('/rooms/settings') != true,
-                ),
-                sideView: child,
-              )
-            : child,
-      ),
+      pageBuilder: (context, state, child) {
+        final columnMode = FluffyThemes.isColumnMode(context);
+        _logRoute('mellon.route.rooms_shell_build', state, {
+          'column_mode': columnMode,
+          'uses_two_column':
+              columnMode &&
+              state.fullPath?.startsWith('/rooms/settings') == false,
+        });
+        return noTransitionPageBuilder(
+          context,
+          state,
+          columnMode && state.fullPath?.startsWith('/rooms/settings') == false
+              ? TwoColumnLayout(
+                  mainView: ChatList(
+                    activeChat: state.pathParameters['roomid'],
+                    activeSpace: state.uri.queryParameters['spaceId'],
+                    displayNavigationRail:
+                        state.path?.startsWith('/rooms/settings') != true,
+                  ),
+                  sideView: child,
+                )
+              : child,
+        );
+      },
       routes: [
         GoRoute(
           path: '/rooms',
           redirect: loggedOutRedirect,
-          pageBuilder: (context, state) => defaultPageBuilder(
-            context,
-            state,
-            FluffyThemes.isColumnMode(context)
-                ? const EmptyPage()
-                : ChatList(
-                    activeChat: state.pathParameters['roomid'],
-                    activeSpace: state.uri.queryParameters['spaceId'],
-                  ),
-          ),
+          pageBuilder: (context, state) {
+            final columnMode = FluffyThemes.isColumnMode(context);
+            _logRoute('mellon.route.rooms_build', state, {
+              'column_mode': columnMode,
+            });
+            return defaultPageBuilder(
+              context,
+              state,
+              columnMode
+                  ? const EmptyPage()
+                  : ChatList(
+                      activeChat: state.pathParameters['roomid'],
+                      activeSpace: state.uri.queryParameters['spaceId'],
+                    ),
+            );
+          },
           routes: [
             GoRoute(
               path: 'archive',
@@ -161,14 +223,19 @@ abstract class AppRoutes {
               routes: [
                 GoRoute(
                   path: ':roomid',
-                  pageBuilder: (context, state) => defaultPageBuilder(
-                    context,
-                    state,
-                    ChatPage(
-                      roomId: state.pathParameters['roomid']!,
-                      eventId: state.uri.queryParameters['event'],
-                    ),
-                  ),
+                  pageBuilder: (context, state) {
+                    _logRoute('mellon.route.archive_room_build', state);
+                    return defaultPageBuilder(
+                      context,
+                      state,
+                      ChatPage(
+                        roomId: state.pathParameters['roomid']!,
+                        eventId: state.uri.queryParameters['event'],
+                        threadId: state.uri.queryParameters['thread'],
+                        clientId: state.uri.queryParameters['client'],
+                      ),
+                    );
+                  },
                   redirect: loggedOutRedirect,
                 ),
               ],
@@ -363,6 +430,11 @@ abstract class AppRoutes {
             GoRoute(
               path: ':roomid',
               pageBuilder: (context, state) {
+                _logRoute('mellon.route.room_build', state, {
+                  'has_body_share':
+                      state.uri.queryParameters['body']?.isNotEmpty == true,
+                  'extra_type': state.extra?.runtimeType.toString(),
+                });
                 final body = state.uri.queryParameters['body'];
                 var shareItems = state.extra is List<ShareItem>
                     ? state.extra as List<ShareItem>
@@ -378,6 +450,8 @@ abstract class AppRoutes {
                     roomId: state.pathParameters['roomid']!,
                     shareItems: shareItems,
                     eventId: state.uri.queryParameters['event'],
+                    threadId: state.uri.queryParameters['thread'],
+                    clientId: state.uri.queryParameters['client'],
                   ),
                 );
               },

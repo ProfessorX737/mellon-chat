@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
+import 'package:go_router/go_router.dart';
 import 'package:matrix/matrix.dart';
 
 import 'package:fluffychat/config/themes.dart';
 import 'package:fluffychat/l10n/l10n.dart';
 import 'package:fluffychat/pages/chat_list/chat_list.dart';
-import 'package:fluffychat/pages/chat_list/client_chooser_button.dart';
 import 'package:fluffychat/utils/sync_status_localization.dart';
 import '../../widgets/matrix.dart';
 
@@ -38,7 +38,9 @@ class ChatListHeader extends StatelessWidget implements PreferredSizeWidget {
               client.onSyncStatus.value ??
               const SyncStatusUpdate(SyncStatus.waitingForResponse);
           if (status.status == SyncStatus.error) {
-            Logs().w('[DEBUG-SYNC] Sync error! status=${status.status} error=${status.error?.exception} homeserver=${client.homeserver} prevBatch=${client.prevBatch}');
+            Logs().w(
+              '[DEBUG-SYNC] Sync error! status=${status.status} error=${status.error?.exception} homeserver=${client.homeserver} prevBatch=${client.prevBatch}',
+            );
           }
           final hide =
               client.onSync.value != null &&
@@ -127,7 +129,14 @@ class ChatListHeader extends StatelessWidget implements PreferredSizeWidget {
                               maxLines: 2,
                             ),
                           )
-                  : SizedBox(width: 0, child: ClientChooserButton(controller)),
+                  : IconButton(
+                      tooltip: L10n.of(context).newChat,
+                      onPressed: () => context.go('/rooms/newprivatechat'),
+                      icon: Icon(
+                        Icons.add_outlined,
+                        color: theme.colorScheme.onPrimaryContainer,
+                      ),
+                    ),
             ),
           );
         },

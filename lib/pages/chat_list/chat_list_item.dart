@@ -24,6 +24,8 @@ class ChatListItem extends StatelessWidget {
   final void Function()? onForget;
   final void Function() onTap;
   final String? filter;
+  final Widget? trailing;
+  final bool suppressTypingText;
 
   const ChatListItem(
     this.room, {
@@ -33,6 +35,8 @@ class ChatListItem extends StatelessWidget {
     this.onForget,
     this.filter,
     this.space,
+    this.trailing,
+    this.suppressTypingText = false,
     super.key,
   });
 
@@ -41,7 +45,9 @@ class ChatListItem extends StatelessWidget {
     final theme = Theme.of(context);
 
     final isMuted = room.pushRuleState != PushRuleState.notify;
-    final typingText = room.getLocalizedTypingText(context);
+    final typingText = suppressTypingText
+        ? ''
+        : room.getLocalizedTypingText(context);
     final lastEvent = room.lastEvent;
     final ownMessage = lastEvent?.senderId == room.client.userID;
     final unread = room.isUnread;
@@ -349,33 +355,35 @@ class ChatListItem extends StatelessWidget {
                 ],
               ),
               onTap: onTap,
-              trailing: onForget == null
-                  ? room.membership == Membership.invite
-                        ? IconButton(
-                            tooltip: L10n.of(context).declineInvitation,
-                            icon: const Icon(Icons.delete_forever_outlined),
-                            color: theme.colorScheme.error,
-                            onPressed: () async {
-                              final consent = await showOkCancelAlertDialog(
-                                context: context,
-                                title: L10n.of(context).declineInvitation,
-                                message: L10n.of(context).areYouSure,
-                                okLabel: L10n.of(context).yes,
-                                isDestructive: true,
-                              );
-                              if (consent != OkCancelResult.ok) return;
-                              if (!context.mounted) return;
-                              await showFutureLoadingDialog(
-                                context: context,
-                                future: room.leave,
-                              );
-                            },
-                          )
-                        : null
-                  : IconButton(
-                      icon: const Icon(Icons.delete_outlined),
-                      onPressed: onForget,
-                    ),
+              trailing:
+                  trailing ??
+                  (onForget == null
+                      ? room.membership == Membership.invite
+                            ? IconButton(
+                                tooltip: L10n.of(context).declineInvitation,
+                                icon: const Icon(Icons.delete_forever_outlined),
+                                color: theme.colorScheme.error,
+                                onPressed: () async {
+                                  final consent = await showOkCancelAlertDialog(
+                                    context: context,
+                                    title: L10n.of(context).declineInvitation,
+                                    message: L10n.of(context).areYouSure,
+                                    okLabel: L10n.of(context).yes,
+                                    isDestructive: true,
+                                  );
+                                  if (consent != OkCancelResult.ok) return;
+                                  if (!context.mounted) return;
+                                  await showFutureLoadingDialog(
+                                    context: context,
+                                    future: room.leave,
+                                  );
+                                },
+                              )
+                            : null
+                      : IconButton(
+                          icon: const Icon(Icons.delete_outlined),
+                          onPressed: onForget,
+                        )),
             ),
           ),
         ),
