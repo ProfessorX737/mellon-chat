@@ -4,6 +4,7 @@
 *.pyc
 *.swp
 *.snap
+*.bak
 .DS_Store
 .local/
 .atom/
@@ -36,6 +37,17 @@ web/Imaging.wasm
 .pub-cache/
 .pub/
 /build/
+
+# Ruby/Bundler local installs
+**/.bundle/
+ios/vendor/
+
+# Generated release/test reports
+**/fastlane/report.xml
+
+# Local/generated asset backups and intermediates
+**/.alpha-backup/
+macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_*.png
 
 # Web related
 docs/tailwind.css
