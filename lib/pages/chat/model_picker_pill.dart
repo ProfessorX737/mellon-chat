@@ -7,7 +7,7 @@ import 'package:fluffychat/ai_stream/model_catalog.dart';
 /// Tapping opens the model picker panel.
 class ModelPickerPill extends StatelessWidget {
   final ModelSelection? currentSelection;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final bool isLoading;
 
   const ModelPickerPill({
@@ -21,7 +21,8 @@ class ModelPickerPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    if (isLoading) {
+    final selection = currentSelection;
+    if (selection == null && isLoading) {
       return const Padding(
         padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         child: SizedBox(
@@ -32,7 +33,6 @@ class ModelPickerPill extends StatelessWidget {
       );
     }
 
-    final selection = currentSelection;
     if (selection == null) return const SizedBox.shrink();
 
     return Tooltip(
@@ -40,7 +40,7 @@ class ModelPickerPill extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.only(left: 4),
         child: InkWell(
-          onTap: onTap,
+          onTap: isLoading ? null : onTap,
           borderRadius: BorderRadius.circular(16),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -67,11 +67,20 @@ class ModelPickerPill extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 2),
-                Icon(
-                  Icons.arrow_drop_down,
-                  size: 16,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+                isLoading
+                    ? SizedBox(
+                        height: 12,
+                        width: 12,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.8,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      )
+                    : Icon(
+                        Icons.arrow_drop_down,
+                        size: 16,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
               ],
             ),
           ),

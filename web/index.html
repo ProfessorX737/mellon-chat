@@ -43,6 +43,14 @@
   <script>
     (function () {
       var sessionId = Date.now().toString(36) + Math.random().toString(36).slice(2);
+      var buildInfo = {
+        app_version: '__MELLON_APP_VERSION__',
+        build_id: '__MELLON_BUILD_ID__',
+        build_time: '__MELLON_BUILD_TIME__',
+        git_sha: '__MELLON_GIT_SHA__',
+        git_dirty: '__MELLON_GIT_DIRTY__' === 'true',
+        main_js_path: 'main.dart.js?v=__MELLON_BUILD_ID__'
+      };
 
       function safeString(value) {
         try {
@@ -63,7 +71,7 @@
             event: event,
             session_id: sessionId,
             time: new Date().toISOString()
-          }, fields || {});
+          }, buildInfo, fields || {});
           fetch('/__mellon_debug_logs', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -73,7 +81,12 @@
         } catch (_) {}
       }
 
+      window.__mellonBuildInfo = buildInfo;
       window.__mellonDebugPost = postDebug;
+      postDebug('mellon.browser.build_info', {
+        href: window.location.href,
+        user_agent: window.navigator && window.navigator.userAgent
+      });
 
       window.addEventListener('error', function (event) {
         var target = event.target;

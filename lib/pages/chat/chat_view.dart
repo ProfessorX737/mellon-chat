@@ -408,7 +408,8 @@ class ChatView extends StatelessWidget {
                                           if (controller
                                                       .currentModelSelection !=
                                                   null ||
-                                              controller.isFetchingCatalog)
+                                              controller.isFetchingCatalog ||
+                                              controller.isChangingModel)
                                             Padding(
                                               padding:
                                                   const EdgeInsets.symmetric(
@@ -422,8 +423,11 @@ class ChatView extends StatelessWidget {
                                                         .currentModelSelection,
                                                     onTap: controller
                                                         .openModelPicker,
-                                                    isLoading: controller
-                                                        .isFetchingCatalog,
+                                                    isLoading:
+                                                        controller
+                                                            .isFetchingCatalog ||
+                                                        controller
+                                                            .isChangingModel,
                                                   ),
                                                   const Spacer(),
                                                 ],

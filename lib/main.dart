@@ -33,6 +33,7 @@ void main() async {
 
   try {
     logStartup('mellon.startup.main_enter');
+    logStartup('mellon.startup.build_info');
 
     if (PlatformInfos.isAndroid) {
       final port = mainIsolateReceivePort = ReceivePort();

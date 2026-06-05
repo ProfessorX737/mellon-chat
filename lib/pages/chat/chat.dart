@@ -445,6 +445,9 @@ class ChatController extends State<ChatPageWithRoom>
   /// Whether we are currently fetching the catalog
   bool isFetchingCatalog = false;
 
+  /// Whether we are waiting for a silent model switch acknowledgement.
+  bool isChangingModel = false;
+
   /// Current model selection (from cached catalog)
   ModelSelection? get currentModelSelection => modelCatalog?.current;
 
@@ -3272,7 +3275,51 @@ class ChatController extends State<ChatPageWithRoom>
     if (roomState != null) yield roomState;
   }
 
-  ModelCatalog _catalogWithScopedCurrent(ModelCatalog catalog) {
+  Future<Map<String, dynamic>?> _waitForModelResponse(
+    String requestId, {
+    Duration timeout = const Duration(seconds: 4),
+    String? stateKey,
+  }) async {
+    final responseStateKey = stateKey ?? _modelStateKey;
+    final deadline = DateTime.now().add(timeout);
+    do {
+      await Future.delayed(const Duration(milliseconds: 250));
+      final candidate = _modelResponseStateCandidates().firstWhereOrNull(
+        (event) => event.content['request_id'] == requestId,
+      );
+      if (candidate != null) {
+        return Map<String, dynamic>.from(candidate.content);
+      }
+      try {
+        final content = await room.client.getRoomStateWithKey(
+          room.id,
+          'org.mellonchat.model_response',
+          responseStateKey,
+        );
+        if (content['request_id'] == requestId) {
+          return Map<String, dynamic>.from(content);
+        }
+      } catch (_) {
+        // The bot may not have written the response state yet.
+      }
+    } while (DateTime.now().isBefore(deadline));
+    return null;
+  }
+
+  ModelCatalog _catalogFromStateResponse(
+    StrippedStateEvent stateEvent,
+    ModelCatalog catalog,
+  ) {
+    final threadId = activeThreadId;
+    if (threadId == null) return catalog;
+
+    final responseStateKey = stateEvent.stateKey?.trim();
+    final responseThreadId = stateEvent.content['thread_root_event_id'];
+    final responseIsScopedToThread =
+        responseStateKey == threadId ||
+        (responseThreadId is String && responseThreadId.trim() == threadId);
+    if (responseIsScopedToThread) return catalog;
+
     final scopedCurrent = ModelCatalog.getForRoom(conversationKey)?.current;
     if (scopedCurrent == null) return catalog;
     return ModelCatalog(
@@ -3300,6 +3347,24 @@ class ChatController extends State<ChatPageWithRoom>
         '[model-pill] initModelCatalog: using cached catalog for $conversationKey (${modelCatalog!.catalog.length} providers)',
       );
       setState(() {}); // Trigger rebuild so pill shows
+    }
+
+    // Check room state first. A thread-scoped model_response is the
+    // authoritative current model for this subchat; visible bot messages may
+    // still contain older ai_stream.model metadata from before the switch.
+    final stateEvent = _modelResponseStateCandidates().firstWhereOrNull(
+      (event) => event.content['type'] == 'model_picker',
+    );
+    if (stateEvent != null) {
+      debugPrint('[model-pill] found model_response in room state');
+      try {
+        final catalog = ModelCatalog.fromJson(stateEvent.content);
+        modelCatalog = _catalogFromStateResponse(stateEvent, catalog);
+        setState(() {});
+        if (_hasSelectableModelOptions(modelCatalog)) return;
+      } catch (e) {
+        debugPrint('[model-pill] state parse error: $e');
+      }
     }
 
     // Scan timeline events for model info (newest-first), including hidden
@@ -3361,25 +3426,6 @@ class ChatController extends State<ChatPageWithRoom>
       }
     }
 
-    // Check room state for a previously cached model_response (state events
-    // persist across syncs and are NOT encrypted in E2E rooms).
-    final stateEvent = _modelResponseStateCandidates().firstWhereOrNull(
-      (event) => event.content['type'] == 'model_picker',
-    );
-    if (stateEvent != null) {
-      debugPrint('[model-pill] found model_response in room state');
-      try {
-        final catalog = ModelCatalog.fromJson(stateEvent.content);
-        modelCatalog = activeThreadId == null
-            ? catalog
-            : _catalogWithScopedCurrent(catalog);
-        setState(() {});
-        if (_hasSelectableModelOptions(modelCatalog)) return;
-      } catch (e) {
-        debugPrint('[model-pill] state parse error: $e');
-      }
-    }
-
     final hasFullCatalog = _hasSelectableModelOptions(modelCatalog);
     debugPrint(
       '[model-pill] scan done: hasModel=${modelCatalog != null} hasFullCatalog=$hasFullCatalog isDirect=${room.isDirectChat} autoFetchAttempted=${ModelCatalog.wasAutoFetchAttempted(conversationKey)}',
@@ -3428,31 +3474,20 @@ class ChatController extends State<ChatPageWithRoom>
       );
       // Wait for sync to deliver the bot's state event response. A matching
       // request_id prevents old room state from masquerading as a fresh catalog.
-      StrippedStateEvent? stateEvent;
-      final deadline = DateTime.now().add(const Duration(seconds: 4));
-      do {
-        await Future.delayed(const Duration(milliseconds: 250));
-        final candidate = _modelResponseStateCandidates().firstWhereOrNull(
-          (event) => event.content['request_id'] == requestId,
-        );
-        if (candidate != null) {
-          stateEvent = candidate;
-          break;
-        }
-      } while (DateTime.now().isBefore(deadline));
+      final stateContent = await _waitForModelResponse(
+        requestId,
+        stateKey: stateKey,
+      );
       // Check room state for the response (state events aren't in timeline).
       // Also update if we only have a partial catalog (current model but no
       // provider/model list from ai_stream.model).
       final needsCatalog =
           forceRefresh || !_hasSelectableModelOptions(modelCatalog);
       if (needsCatalog) {
-        if (stateEvent != null &&
-            stateEvent.content['type'] == 'model_picker') {
+        if (stateContent != null && stateContent['type'] == 'model_picker') {
           try {
-            final catalog = ModelCatalog.fromJson(stateEvent.content);
-            modelCatalog = threadId == null
-                ? catalog
-                : _catalogWithScopedCurrent(catalog);
+            final catalog = ModelCatalog.fromJson(stateContent);
+            modelCatalog = catalog;
             didLoadCatalog = _hasSelectableModelOptions(modelCatalog);
             debugPrint(
               '[model-pill] autoFetch: found model_response in room state (${modelCatalog!.catalog.length} providers)',
@@ -3542,6 +3577,94 @@ class ChatController extends State<ChatPageWithRoom>
     }
   }
 
+  void _showModelPickerError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<bool> _setModelSilently(
+    String selectedModelId,
+    ModelCatalog previousCatalog,
+  ) async {
+    if (!mounted || isChangingModel) return false;
+
+    final threadId = activeThreadId;
+    final requestId = '${DateTime.now().microsecondsSinceEpoch}';
+    setState(() => isChangingModel = true);
+
+    try {
+      await room.client.setRoomStateWithKey(
+        room.id,
+        'org.mellonchat.model_request',
+        _modelStateKey,
+        {
+          'action': 'set_model',
+          'model': selectedModelId,
+          'request_id': requestId,
+          'ts': DateTime.now().millisecondsSinceEpoch,
+          if (threadId != null) 'thread_root_event_id': threadId,
+          if (threadId != null && threadLastEventId != null)
+            'thread_last_event_id': threadLastEventId,
+        },
+      );
+
+      final stateContent = await _waitForModelResponse(
+        requestId,
+        timeout: const Duration(seconds: 6),
+        stateKey: _modelStateKey,
+      );
+      if (stateContent == null) {
+        _showModelPickerError('Could not confirm model change.');
+        return false;
+      }
+
+      final ok = stateContent['ok'] == true;
+      if (!ok) {
+        final error = stateContent['error'];
+        _showModelPickerError(
+          error is String && error.trim().isNotEmpty
+              ? error
+              : 'Could not change model.',
+        );
+        return false;
+      }
+
+      if (stateContent['type'] != 'model_picker') {
+        _showModelPickerError('Model change response was not understood.');
+        return false;
+      }
+
+      try {
+        final catalog = ModelCatalog.fromJson(stateContent);
+        if (!mounted) return false;
+        setState(() {
+          modelCatalog = ModelCatalog(
+            current: catalog.current,
+            catalog: catalog.catalog.isEmpty
+                ? previousCatalog.catalog
+                : catalog.catalog,
+            fetchedAt: catalog.fetchedAt,
+          );
+        });
+        return true;
+      } catch (e) {
+        debugPrint('[model-pill] set_model parse error: $e');
+        _showModelPickerError('Model change response was not understood.');
+        return false;
+      }
+    } catch (e) {
+      Logs().w('Failed to send silent model switch', e);
+      _showModelPickerError('Could not change model.');
+      return false;
+    } finally {
+      if (mounted) {
+        setState(() => isChangingModel = false);
+      }
+    }
+  }
+
   /// Open the model picker panel.
   void openModelPicker() async {
     // If no catalog yet or stale, fetch first
@@ -3592,24 +3715,7 @@ class ChatController extends State<ChatPageWithRoom>
     );
 
     if (selectedModelId != null && mounted) {
-      // Send the model switch command as a message
-      room.sendTextEvent(
-        '/model $selectedModelId',
-        parseCommands: false,
-        threadRootEventId: activeThreadId,
-        threadLastEventId: threadLastEventId,
-      );
-      // Optimistically update the pill display
-      final parts = selectedModelId.split('/');
-      if (parts.length == 2) {
-        setState(() {
-          modelCatalog = ModelCatalog(
-            current: ModelSelection(provider: parts[0], model: parts[1]),
-            catalog: catalog.catalog,
-            fetchedAt: catalog.fetchedAt,
-          );
-        });
-      }
+      await _setModelSilently(selectedModelId, catalog);
     }
   }
 

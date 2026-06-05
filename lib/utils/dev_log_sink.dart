@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:matrix/matrix.dart';
 
+import 'package:fluffychat/config/build_info.dart';
+
 class DevLogSink {
   static const _path = '/__mellon_debug_logs';
   static const _verboseQueryKeys = {
@@ -13,6 +15,7 @@ class DevLogSink {
     'mellon_logs',
   };
   static const _alwaysEmitEvents = {
+    'mellon.startup.build_info',
     'mellon.chat.send_text',
     'mellon.subchat.create_root_sent',
     'mellon.subchat.enter',
@@ -46,6 +49,7 @@ class DevLogSink {
       'event': event,
       'session_id': _sessionId,
       'time': DateTime.now().toUtc().toIso8601String(),
+      ...MellonBuildInfo.debugFields,
       ...fields,
     };
     Logs().i('[MELLON-DEBUG] ${jsonEncode(payload)}');
