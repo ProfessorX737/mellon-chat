@@ -88,6 +88,29 @@ class DevicesSettingsView extends StatelessWidget {
                           unblock: controller.unblockDeviceAction,
                         ),
                       ],
+                      if (controller.unverifiedOwnDeviceKeys.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16.0,
+                            vertical: 8.0,
+                          ),
+                          child: SizedBox(
+                            width: double.infinity,
+                            child: TextButton.icon(
+                              label: const Text('Trust all current devices'),
+                              style: TextButton.styleFrom(
+                                iconColor: theme.colorScheme.onPrimaryContainer,
+                                foregroundColor:
+                                    theme.colorScheme.onPrimaryContainer,
+                                backgroundColor:
+                                    theme.colorScheme.primaryContainer,
+                              ),
+                              icon: const Icon(Icons.verified_user_outlined),
+                              onPressed:
+                                  controller.verifyAllCurrentDevicesAction,
+                            ),
+                          ),
+                        ),
                       if (controller.notThisDevice.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.symmetric(

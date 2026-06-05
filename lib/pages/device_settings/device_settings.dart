@@ -90,6 +90,53 @@ class DevicesSettingsController extends State<DevicesSettings> {
     reload();
   }
 
+  List<DeviceKeys> get unverifiedOwnDeviceKeys {
+    final client = Matrix.of(context).client;
+    final deviceKeys = client.userDeviceKeys[client.userID]?.deviceKeys;
+    if (deviceKeys == null) return const [];
+
+    final currentDeviceIds = devices?.map((device) => device.deviceId).toSet();
+    return deviceKeys.values
+        .where(
+          (key) =>
+              !key.verified &&
+              !key.blocked &&
+              (currentDeviceIds == null ||
+                  currentDeviceIds.contains(key.deviceId)),
+        )
+        .toList();
+  }
+
+  void verifyAllCurrentDevicesAction() async {
+    final deviceKeys = unverifiedOwnDeviceKeys;
+    if (deviceKeys.isEmpty) return;
+
+    final confirmed = await showOkCancelAlertDialog(
+      context: context,
+      title: L10n.of(context).areYouSure,
+      okLabel: L10n.of(context).verify,
+      cancelLabel: L10n.of(context).cancel,
+      message:
+          'This will trust all current devices on this account without logging any of them out.',
+    );
+    if (confirmed != OkCancelResult.ok) return;
+    if (!mounted) return;
+
+    await showFutureLoadingDialog(
+      context: context,
+      delay: false,
+      future: () async {
+        for (final device in deviceKeys) {
+          if (!device.verified && !device.blocked) {
+            await device.setVerified(true);
+          }
+        }
+      },
+    );
+    if (!mounted) return;
+    setState(() {});
+  }
+
   void renameDeviceAction(Device device) async {
     final displayName = await showTextInputDialog(
       context: context,
